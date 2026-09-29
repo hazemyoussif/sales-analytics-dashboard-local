@@ -1,0 +1,39 @@
+# The "sync now" button's backend. A tiny FastAPI service that runs
+# `python -m odoosync full` on an authenticated request from the dashboard's
+# Sync page. See sync/RUNNER.md for the full picture.
+#
+# To deploy: in the Render dashboard, New + → Blueprint, point it at this repo.
+# Render reads this file, creates the service, and prompts for the four secret
+# values (marked sync: false below). Then copy the service's URL into
+# assets/js/config.js → SYNC_RUNNER_URL and redeploy the dashboard.
+services:
+  - type: web
+    name: dabboos-sync-runner
+    runtime: python
+    plan: free
+    rootDir: sync
+    buildCommand: pip install -r requirements-runner.txt
+    startCommand: uvicorn runner:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      # Same four the CLI needs. Set these in the Render dashboard; never commit
+      # the values.
+      - key: ENGINE_URL
+        sync: false
+      - key: ENGINE_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      # The dashboard's origin, so the browser's CORS preflight passes. Comma
+      # separate if there is more than one (e.g. a preview domain).
+      - key: ALLOWED_ORIGIN
+        value: https://dabboos-product-dashboard.vercel.app
+      # This service's own https URL, so it can ping itself and stay awake
+      # through a 20-minute sync on the free plan. Fill in after the first
+      # deploy tells you the URL.
+      - key: RUNNER_PUBLIC_URL
+        sync: false
+      - key: TIMEZONE
+        value: Asia/Baghdad

@@ -1,0 +1,334 @@
+{
+  "name": "Dabboos Invoice-Lines BACKFILL",
+  "nodes": [
+    {
+      "id": "b1",
+      "name": "Run once",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -220,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "b2",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -20,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "supabaseUrl",
+              "value": "__SUPABASE_URL__",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "serviceKey",
+              "value": "__SERVICE_ROLE_KEY__",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "backfillFrom",
+              "value": "2024-01-01",
+              "type": "string"
+            },
+            {
+              "id": "c4",
+              "name": "backfillTo",
+              "value": "2026-09-01",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "b3",
+      "name": "Months",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\n// One item per calendar month between backfillFrom and backfillTo.\n// Chunking by month keeps each Odoo response small enough not to time out.\n// To TEST, set backfillFrom/backfillTo in Config to a single month first.\nconst cfg = $('Config').first().json;\nconst start = new Date(cfg.backfillFrom + 'T00:00:00Z');\nconst end   = new Date(cfg.backfillTo   + 'T00:00:00Z');\nif (isNaN(start) || isNaN(end)) throw new Error('backfillFrom/backfillTo must be YYYY-MM-DD');\n\nconst pad = n => String(n).padStart(2, '0');\nconst iso = d => d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());\n\nconst out = [];\nlet cur = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), 1));\nwhile (cur < end) {\n  const next = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth() + 1, 1));\n  out.push({ json: { from: iso(cur), to: iso(next), label: iso(cur).slice(0, 7) } });\n  cur = next;\n}\nif (!out.length) throw new Error('No months to process - check backfillFrom/backfillTo in Config');\nreturn out;\n"
+      }
+    },
+    {
+      "id": "b4",
+      "name": "Each Month",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        400,
+        300
+      ],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "b5",
+      "name": "Invoice Report",
+      "type": "n8n-nodes-base.odoo",
+      "typeVersion": 1,
+      "position": [
+        640,
+        420
+      ],
+      "parameters": {
+        "resource": "custom",
+        "customResource": "account.invoice.report",
+        "operation": "getAll",
+        "returnAll": true,
+        "options": {
+          "fieldsList": [
+            "move_id",
+            "product_id",
+            "quantity",
+            "price_subtotal",
+            "price_total",
+            "invoice_date",
+            "commercial_partner_id",
+            "partner_id",
+            "invoice_user_id",
+            "move_type",
+            "state",
+            "payment_state",
+            "price_margin",
+            "inventory_value",
+            "product_categ_id",
+            "product_brand_id",
+            "state_id",
+            "city_id",
+            "team_id"
+          ]
+        },
+        "filterRequest": {
+          "filter": [
+            {
+              "fieldName": "state",
+              "operator": "equal",
+              "value": "posted"
+            },
+            {
+              "fieldName": "move_type",
+              "operator": "in",
+              "value": [
+                "out_invoice",
+                "out_refund"
+              ]
+            },
+            {
+              "fieldName": "invoice_date",
+              "operator": "greaterOrEqual",
+              "value": "={{ $json.from }}"
+            },
+            {
+              "fieldName": "invoice_date",
+              "operator": "lesserThen",
+              "value": "={{ $json.to }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "odooApi": {
+          "id": "DAW2ZSmcDoBe0fTJ",
+          "name": "live-version"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "b6",
+      "name": "Map Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        860,
+        420
+      ],
+      "parameters": {
+        "jsCode": "\n// account.invoice.report -> dashboard_invoice_lines.\n// Odoo many2one fields arrive as [id, \"Label\"]. Credit notes (out_refund) come\n// through with NEGATIVE quantity and price_subtotal - verified 2026-08-01 - so\n// they are stored as-is and every sum nets returns automatically. Never abs().\nconst id0  = v => Array.isArray(v) ? v[0] : ((v === false || v == null) ? null : v);\nconst lbl  = v => Array.isArray(v) ? v[1] : ((v === false || v == null) ? null : v);\nconst num  = v => (v === false || v == null) ? 0 : Number(v);\nconst nnum = v => (v === false || v == null) ? null : Number(v);\n\nconst byId = new Map();                       // de-dupe: the source can emit repeats\nfor (const r of $input.all().map(i => i.json)) {\n  if (!r || r.id == null) continue;           // also skips the empty item that\n  const pid = id0(r.product_id);              // alwaysOutputData emits for a\n  if (!pid || !r.invoice_date) continue;      // month with no invoices\n  byId.set(r.id, {\n    line_id:          r.id,\n    move_id:          id0(r.move_id),\n    product_id:       pid,\n    qty:              num(r.quantity),\n    price_subtotal:   num(r.price_subtotal),\n    price_total:      nnum(r.price_total),\n    price_margin:     nnum(r.price_margin),\n    inventory_value:  nnum(r.inventory_value),\n    invoice_date:     String(r.invoice_date).slice(0, 10),\n    partner_id:       id0(r.commercial_partner_id) ?? id0(r.partner_id),\n    salesperson:      lbl(r.invoice_user_id),\n    user_id:          id0(r.invoice_user_id),\n    move_type:        r.move_type,\n    state:            r.state,\n    payment_state:    r.payment_state || null,\n    product_categ_id: id0(r.product_categ_id),\n    category:         lbl(r.product_categ_id),\n    product_brand_id: id0(r.product_brand_id),\n    brand:            lbl(r.product_brand_id),\n    state_id:         id0(r.state_id),\n    gov:              lbl(r.state_id),\n    city_id:          id0(r.city_id),\n    city:             lbl(r.city_id),\n    team_id:          id0(r.team_id)\n  });\n}\nreturn [{ json: { rows: [...byId.values()], count: byId.size } }];\n"
+      }
+    },
+    {
+      "id": "b7",
+      "name": "Chunk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1060,
+        420
+      ],
+      "parameters": {
+        "jsCode": "\n// Split into POST-sized batches: one item per batch, so the HTTP node fires\n// once per batch. Always emit at least one item so an empty month cannot\n// stall the loop.\nconst rows = $json.rows || [];\nconst CH = 500, items = [];\nfor (let i = 0; i < rows.length; i += CH) items.push({ json: { rows: rows.slice(i, i + CH) } });\nreturn items.length ? items : [{ json: { rows: [] } }];\n"
+      }
+    },
+    {
+      "id": "b8",
+      "name": "Upsert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1260,
+        420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/dashboard_invoice_lines?on_conflict=line_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.serviceKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.serviceKey }}"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rows) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "b9",
+      "name": "note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        -180
+      ],
+      "parameters": {
+        "content": "## Invoice-Lines BACKFILL (one-time)\nLoops MONTH BY MONTH from `backfillFrom` to `backfillTo` in **Config**, pulling posted\ncustomer invoices + credit notes from `account.invoice.report`, upserting on `line_id`.\n\n**Before running:** replace `__SUPABASE_URL__` and `__SERVICE_ROLE_KEY__` in Config with\nthe NEW project's values (jxihpdjyquyttscqzcid). The service_role key never leaves n8n.\n\n**Test ONE month first** - set backfillFrom 2026-06-01 / backfillTo 2026-07-01, run it,\ncheck the row count, then widen to full history and run again. Upsert makes re-runs safe.\n\nThe Odoo node has **Always Output Data ON**. Without it a month with no invoices returns\nnothing and n8n HALTS the entire workflow mid-backfill.\n\nCredit notes arrive NEGATIVE and are stored that way, so returns net out on every sum.",
+        "height": 300,
+        "width": 580
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Run once": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Months",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Months": {
+      "main": [
+        [
+          {
+            "node": "Each Month",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Each Month": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Invoice Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice Report": {
+      "main": [
+        [
+          {
+            "node": "Map Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Rows": {
+      "main": [
+        [
+          {
+            "node": "Chunk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk": {
+      "main": [
+        [
+          {
+            "node": "Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert": {
+      "main": [
+        [
+          {
+            "node": "Each Month",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

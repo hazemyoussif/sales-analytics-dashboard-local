@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>عملاء 80/20 — دبوس</title>
+<link rel="stylesheet" href="assets/css/style.css?v=36">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👥</text></svg>">
+</head>
+<body>
+  <div id="shell" class="hidden"></div>
+  <noscript><main><div class="state error">This dashboard needs JavaScript enabled.</div></main></noscript>
+  <main id="app" class="hidden">
+    <div id="boot" class="state">Loading…</div>
+    <div id="health"></div>
+
+    <!-- ONE control for time, at the top, and it is a single month.
+         This card has been through three shapes. First: من/إلى in the filter
+         row picking DAYS, plus المقارنة من/إلى in a card of their own picking
+         MONTHS -- two controls at two granularities, with a warning underneath
+         for when the two windows came out different lengths. Then both pairs
+         moved here as months, which removed the mismatch but still left four
+         date boxes. Now one.
+         The day precision was never real: the unfiltered path aggregates
+         dashboard_partner_month and customers_pareto snaps to month boundaries,
+         so "20 August" and "1 August" always returned the same answer. And the
+         second pair was always derivable -- the comparison people actually use
+         is the same month a year earlier, which needs no input at all.
+         The cost, recorded so this reads as a decision and not a regression:
+         no quarters, no full years, no arbitrary comparison window on this
+         page. Overview still takes any range. -->
+    <div class="card period-card">
+      <h2 data-t="cust.periodTitle">—</h2>
+      <p class="sub" data-t="cust.periodHint"></p>
+      <div id="period" class="filters"></div>
+      <!-- Two buttons, not a second pair of date pickers. Both comparison
+           windows are derived from the month above, so there is nothing to
+           type and the two windows are the same length by construction. -->
+      <div id="compare-buttons" class="btn-row"></div>
+      <!-- Names both windows. Two column headings reading 2025 and 2026 do not
+           tell a reader which dates they cover. -->
+      <div id="compare-note" class="sub"></div>
+    </div>
+
+    <!-- Who is counted, as opposed to when. Deliberately below the period
+         card: these narrow the population, the card above decides the two
+         windows every number on the page is measured over. -->
+    <div id="filters" class="filters"></div>
+    <div id="tiles" class="tiles"></div>
+    <!-- The concentration curve card is gone. It showed the SHAPE of the
+         customer base, which barely moves and cannot be acted on; the review
+         called it "مش مفيد خالص". I replaced the drawing last round and left
+         its heading and subtitle in place, so the page spent a day describing
+         a Lorenz curve that was no longer there. Removed outright rather than
+         re-labelled: the comparison the manager asked for belongs in the
+         table, where the numbers are, not in a second chart. -->
+    <div class="card">
+      <h2 data-t="cust.classesTitle">—</h2>
+      <p class="sub" data-t="cust.classesSub"></p>
+      <div id="classes"></div>
+    </div>
+    <div class="grid-2">
+    <div class="card">
+      <h2 data-t="cust.topTitle">—</h2>
+      <div id="top"></div>
+    </div>
+    <div class="card">
+      <h2 data-t="cust.byGovTitle">—</h2>
+      <div id="by-gov"></div>
+    </div>
+    </div>
+    <!-- Restored. The segment (ماركتات / كرزات / جملة / سلاسل) is
+         res.partner.title in Odoo, now synced into dashboard_customers.title
+         and returned by customers_pareto as the `dept` column. -->
+    <div class="card">
+      <h2 data-t="cust.byDeptTitle">—</h2>
+      <p class="sub" data-t="cust.byDeptSub"></p>
+      <div id="by-dept"></div>
+    </div>
+    <div class="card">
+      <h2 data-t="cust.tableTitle">—</h2>
+      <p class="sub" id="count"></p>
+      <!-- Collapsed by default. This table runs to hundreds of rows and sits
+           below four cards that answer the page's actual question; leaving it
+           open pushed everything else off the screen. <details> rather than a
+           JS toggle so it works before the module loads, keyboard-operates for
+           free, and Ctrl+F still finds text inside it in most browsers. -->
+      <details id="all-customers">
+        <summary data-t="cust.showAll">عرض كل العملاء</summary>
+        <div id="table"></div>
+        <div id="legend"></div>
+      </details>
+    </div>
+
+  </main>
+
+  <script>
+    window.addEventListener('error', e => {
+      const app = document.getElementById('app');
+      if (!app) return;
+      app.classList.remove('hidden');
+      const boot = document.getElementById('boot');
+      const msg = (e.message || 'Script failed to load') +
+                  (e.filename ? ' — ' + e.filename.split('/').pop() : '');
+      if (boot) { boot.className = 'state error'; boot.textContent = msg; }
+    }, true);
+  </script>
+  <script type="module" src="assets/js/pages/customers.js?v=36"></script>
+</body>
+</html>

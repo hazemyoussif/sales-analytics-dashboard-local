@@ -1,0 +1,6 @@
+# The "sync now" button's backend (runner.py). The CLI itself does NOT need
+# these -- keep them out of requirements.txt so a plain sync install stays lean.
+-r requirements.txt
+
+fastapi>=0.111
+uvicorn[standard]>=0.30

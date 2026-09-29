@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Products Dashboard — Build Guide</title>
+<style>
+  :root{ --bg:#0f1729; --card:#fff; --ink:#1e293b; --ink2:#475569; --ink3:#94a3b8;
+         --bdr:#e2e8f0; --acc:#2563eb; --amber:#f59e0b; --red:#dc2626; --grn:#059669;
+         --code:#f1f5f9; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:#f8fafc; color:var(--ink);
+        font:15px/1.65 -apple-system,Segoe UI,Roboto,Helvetica,Arial,"Noto Naskh Arabic",sans-serif; }
+  .wrap{ max-width:920px; margin:0 auto; padding:0 20px 80px; }
+  header{ background:linear-gradient(135deg,#0f1729,#1e293b); color:#fff; padding:34px 20px; margin-bottom:26px; }
+  header .in{ max-width:920px; margin:0 auto; }
+  header h1{ margin:0 0 6px; font-size:26px; }
+  header p{ margin:0; color:#cbd5e1; font-size:14px; }
+  h2{ margin:34px 0 12px; font-size:20px; border-bottom:2px solid var(--bdr); padding-bottom:6px; }
+  h3{ margin:22px 0 8px; font-size:16px; color:var(--ink); }
+  p,li{ color:var(--ink2); }
+  code{ font-family:var(--mono); background:var(--code); padding:1px 5px; border-radius:4px; font-size:.9em; color:#0f172a; }
+  pre{ background:#0f172a; color:#e2e8f0; padding:14px 16px; border-radius:10px; overflow-x:auto; font-family:var(--mono); font-size:13px; line-height:1.55; }
+  pre code{ background:none; color:inherit; padding:0; }
+  table{ border-collapse:collapse; width:100%; margin:12px 0; font-size:13.5px; background:var(--card); border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.05); display:block; overflow-x:auto; }
+  th,td{ text-align:left; padding:9px 12px; border-bottom:1px solid var(--bdr); vertical-align:top; }
+  th{ background:#f1f5f9; font-weight:700; color:var(--ink); white-space:nowrap; }
+  .card{ background:var(--card); border:1px solid var(--bdr); border-radius:12px; padding:16px 18px; margin:14px 0; box-shadow:0 1px 3px rgba(0,0,0,.04); }
+  .warn{ border-left:4px solid var(--amber); background:#fffbeb; }
+  .danger{ border-left:4px solid var(--red); background:#fef2f2; }
+  .ok{ border-left:4px solid var(--grn); background:#ecfdf5; }
+  .tag{ display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; background:#e0e7ff; color:#3730a3; }
+  ul{ padding-left:22px; } li{ margin:3px 0; }
+  .k{ color:var(--acc); font-weight:600; }
+  footer{ margin-top:40px; color:var(--ink3); font-size:12px; text-align:center; }
+</style>
+</head>
+<body>
+<header><div class="in">
+  <h1>📦 Products Dashboard — Build Guide</h1>
+  <p>How to build a new products dashboard that reads the <b>same Supabase</b> and produces numbers that reconcile with <b>Odoo</b>.</p>
+</div></header>
+
+<div class="wrap">
+
+<div class="card danger">
+  <b>Golden rule:</b> a single wrong number destroys trust in the whole dashboard. Every metric must be
+  <b>reproducible on a named Odoo screen</b>. Never mix bases (orders vs invoices, taxed vs untaxed,
+  <b>raw vs UoM-normalized</b>). When unsure, label the basis in the UI.
+</div>
+
+<h2>1. Architecture</h2>
+<pre>Odoo  →  n8n (sync)  →  Supabase (Postgres + REST)  →  browser dashboard</pre>
+<ul>
+  <li><b>Static, no build.</b> Plain HTML + vanilla JS + Chart.js (CDN). No framework/bundler.</li>
+  <li>The browser reads <b>Supabase REST</b> directly. n8n already keeps the tables fresh —
+      you <b>only read</b>, you don't build syncs.</li>
+  <li>RTL Arabic + English, money in <b>IQD</b>, calendar anchored to <b>Asia/Baghdad</b>.</li>
+</ul>
+
+<h2>2. Connect to Supabase</h2>
+<pre><code>const SUPABASE_URL = "https://puqfldltipedlodwfyex.supabase.co";
+// anon (public) key — safe in the browser; by itself it reads NOTHING (RLS needs a JWT).
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1cWZsZGx0aXBlZGxvZHdmeWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5NDExODUsImV4cCI6MjA5NjUxNzE4NX0.4vUPTMBBDkHMQTfAr8R0hU7vwKxc969ORVhiO_VhVCc";</code></pre>
+<p><b>REST:</b> <code>GET {URL}/rest/v1/{table}?select=...&amp;{filters}</code> &nbsp;·&nbsp;
+   <b>Headers:</b> <code>apikey: &lt;anon&gt;</code> and <code>Authorization: Bearer &lt;JWT&gt;</code>.</p>
+
+<div class="card warn">
+  <b>⚠️ Auth is required (RLS).</b> The tables have Row-Level Security — <b>the anon key alone returns nothing.</b>
+  Every read needs a <b>logged-in user's JWT</b>. Reuse the existing <code>auth.js</code> login flow
+  (username → Supabase Auth session → JWT attached to each request), or reads 401.
+  <b>Never put the <code>service_role</code> key in the browser</b> — that's for n8n only.
+</div>
+
+<h3>Pagination — Supabase caps responses at 1,000 rows</h3>
+<pre><code>async function sbGetAll(pathAndQuery, headers) {          // headers include apikey + Bearer JWT
+  const PAGE = 1000, sep = pathAndQuery.includes("?") ? "&amp;" : "?";
+  const url = o =&gt; `${SUPABASE_URL}/rest/v1/${pathAndQuery}${sep}limit=${PAGE}&amp;offset=${o}`;
+  const first = await fetch(url(0), { headers: { ...headers, Prefer: "count=exact" } });
+  const out = await first.json();
+  const total = Number((first.headers.get("content-range") || "").split("/")[1]);
+  if (out.length === PAGE &amp;&amp; total &gt; PAGE) {
+    const offs = []; for (let o = PAGE; o &lt; total; o += PAGE) offs.push(o);
+    const more = await Promise.all(offs.map(o =&gt; fetch(url(o), { headers }).then(r =&gt; r.json())));
+    more.forEach(rows =&gt; out.push(...rows));
+  }
+  return out;   // ALWAYS add a unique sort tiebreaker, e.g. &amp;order=line_id.desc
+}</code></pre>
+
+<h2>3. Data model (the tables you read)</h2>
+<table>
+<tr><th>Table</th><th>PK</th><th>Key fields</th><th>Notes</th></tr>
+<tr><td><code>dashboard_products</code></td><td>product_id</td><td>name, sku, category, brand, <b>cost</b>, list_price, <b>uom</b>, active</td><td>cost = Odoo <code>standard_price</code>. uom = product's unit (e.g. "كارتونة 6 وحدات").</td></tr>
+<tr><td><code>dashboard_stock</code></td><td>product_id</td><td><b>on_hand_qty</b>, stock_value, updated_at</td><td>= Odoo <code>qty_available</code> (all internal locations, product's UoM). 2h snapshot.</td></tr>
+<tr><td><code>dashboard_order_lines</code></td><td>line_id</td><td>product_id, <b>qty</b>, price_subtotal, price_total, <b>date_order</b>, partner_id, city, gov, salesperson, user_id, state</td><td><b>From Odoo <code>sale.report</code></b> (see §4). order_id is null.</td></tr>
+<tr><td><code>dashboard_customers</code></td><td>partner_id</td><td>complete_name, governorate, city, salesperson, user_id…</td><td>Customer master + geography.</td></tr>
+<tr><td><code>dashboard_orders</code></td><td>order_id</td><td>date_order, partner_id, amount_total, state, city…</td><td>Order headers (cross-checks).</td></tr>
+</table>
+
+<h2>4. ⭐ Most important: quantities come from <code>sale.report</code></h2>
+<div class="card ok">
+<p><code>dashboard_order_lines.qty</code> is <b>UoM-normalized</b> because the sync sources it from Odoo's
+<b><code>sale.report</code></b> (Sales Analysis), not <code>sale.order.line</code>:</p>
+<ul>
+  <li><code>sale.order.line.product_uom_qty</code> = <b>raw</b> qty in the <b>line's</b> unit → summing mixes
+      cartons + pieces (garbage; one product summed to <b>1,061</b> instead of 303.5).</li>
+  <li><b><code>sale.report.product_uom_qty</code> = Odoo's "Qty Ordered"</b> = normalized to the product's
+      reference unit → matches Odoo exactly (<b>303.5 cartons</b>). And <code>sale.report.date</code> is the
+      <b>real order date</b>.</li>
+</ul>
+<p><b>So <code>qty</code> is already correct — do not re-derive it.</b> It's in the product's UoM and can be
+<b>fractional</b>. <code>sale.report</code> has <b>no <code>order_id</code></b> and <b>no <code>write_date</code></b>
+(it's a view) — hence <code>order_id</code> is null, and the nightly top-up uses a rolling date window.</p>
+</div>
+
+<h2>5. Core conventions (match these or numbers drift)</h2>
+<ol>
+  <li><b>Confirmed only:</b> <code>state in ('sale','done')</code>. Quotations/cancel never count.</li>
+  <li><b>Baghdad calendar:</b> bucket days in <b>Asia/Baghdad</b>, not UTC (week starts Saturday):
+    <pre><code>function bagDay(s){                       // "2026-06-14 20:21:51+00" -&gt; "2026-06-14" (Baghdad)
+  if(!s) return "";
+  const d = new Date(String(s).includes("T") ? s : String(s).replace(" ","T")+"Z");
+  return isNaN(d) ? String(s).slice(0,10) : d.toLocaleDateString("en-CA",{timeZone:"Asia/Baghdad"});
+}</code></pre></li>
+  <li><b>Quantity = normalized</b> (from <code>sale.report</code>); never sum raw <code>sale.order.line</code>.</li>
+  <li><b>Date = <code>date_order</code></b> (real order date), bucketed in Baghdad.</li>
+  <li><b>Revenue = <code>price_subtotal</code></b> (untaxed) = Odoo "Untaxed Total". <code>price_total</code> = taxed.</li>
+  <li><b>Margin = revenue − cost × qty</b> (gross; cost = <code>standard_price</code>).</li>
+  <li><b>Exclude fixtures</b> <code>عارضات و استاندات</code>: filter out <code>category ~ 'عارضات|استاندات'</code>.</li>
+  <li><b>Escape DB strings</b> (<code>esc</code>) before <code>innerHTML</code> (names are user-controlled → XSS).</li>
+  <li><b>De-dupe by PK</b>; <b>money = IQD</b> compacted to K/M.</li>
+</ol>
+
+<h2>6. The metrics (formulas)</h2>
+<p><code>L</code> = confirmed lines in the period (Baghdad <code>date_order</code>), fixtures excluded.</p>
+<table>
+<tr><th>Metric</th><th>Formula</th></tr>
+<tr><td>Units sold</td><td><code>Σ L.qty</code></td></tr>
+<tr><td>Units in stock</td><td><code>Σ dashboard_stock.on_hand_qty</code></td></tr>
+<tr><td>Revenue</td><td><code>Σ L.price_subtotal</code></td></tr>
+<tr><td>Margin</td><td><code>Σ L.price_subtotal − Σ(L.qty × product.cost)</code></td></tr>
+<tr><td>Mix % (product)</td><td><code>product revenue ÷ total revenue × 100</code></td></tr>
+<tr><td>Velocity (product)</td><td>units in trailing 90d ÷ 3 = units/month</td></tr>
+<tr><td>Last sale (product)</td><td><code>max(date_order)</code> over confirmed lines</td></tr>
+<tr><td><b>Frozen</b> (product)</td><td><code>on_hand_qty &gt; 0</code> AND (<code>last_sale</code> null OR older than N days; N=30/60/90, default 60)</td></tr>
+<tr><td>Drill: top customers</td><td>that product's lines grouped by <code>partner_id</code> → Σ qty, Σ revenue</td></tr>
+<tr><td>Drill: top cities</td><td>that product's lines grouped by <code>gov</code></td></tr>
+</table>
+<p>Ready-made, unit-tested implementations exist in <code>assets/js/products-calc.js</code>
+(<code>classifyFrozen, productVelocity, productMarkets, lineMargin, aggregateLines</code>) +
+<code>test/products.test.js</code> — <b>copy that file.</b></p>
+
+<h2>7. Verify every number against Odoo</h2>
+<p><b>Tool:</b> Sales → Reporting → <b>Sales (Sales Analysis pivot)</b>. Always filter <b>Sales Orders</b>;
+Measure = <b>Qty Ordered</b> (units) / <b>Untaxed Total</b> (revenue) / <b>Margin</b>; exclude fixtures.</p>
+<div class="card danger">
+  <b>⚠️ The #1 trap — the end date.</b> "Order Date is between … and <code>06/30/2026 00:00:00</code>"
+  <b>drops all of June 30.</b> Always set the end to the <b>next day</b> (<code>07/01/2026</code>) or
+  <code>23:59:59</code>. (This alone caused a whole "127-unit gap" that was purely a filter mistake.)
+</div>
+<table>
+<tr><th>Dashboard number</th><th>Odoo check</th></tr>
+<tr><td>Units sold / per-product units</td><td>Qty Ordered — grand total / by Product</td></tr>
+<tr><td>Revenue</td><td>Untaxed Total</td></tr>
+<tr><td>Margin</td><td>Margin measure</td></tr>
+<tr><td>Units in stock / on-hand</td><td>Inventory → Products → <b>On Hand</b> (product's unit, all locations)</td></tr>
+<tr><td>Frozen</td><td>On Hand &gt; 0 <b>and</b> newest order in Sales &gt; N days ago</td></tr>
+<tr><td>Drill top customers / cities</td><td>Group By → Customer / Customer ▸ State, Qty Ordered</td></tr>
+</table>
+<pre><code>-- Supabase = what the page should compute (June)
+select p.sku, p.name,
+       round(sum(l.qty),1)  as units,
+       round(sum(l.price_subtotal)) as revenue,
+       round(sum(l.price_subtotal) - sum(l.qty * coalesce(p.cost,0))) as margin
+from dashboard_order_lines l
+join dashboard_products p on p.product_id = l.product_id
+where date(l.date_order at time zone 'Asia/Baghdad') between '2026-06-01' and '2026-06-30'
+  and l.state in ('sale','done')
+  and coalesce(p.category,'') !~ 'عارضات|استاندات'
+group by p.sku, p.name order by units desc;</code></pre>
+
+<h2>8. How the data stays fresh (you rely on it)</h2>
+<ul>
+  <li><b>Products + Stock</b> — every 2h from <code>product.product</code> (catalog + qty_available + cost).</li>
+  <li><b>Order-lines full backfill</b> — one-time, month-chunked from <b><code>sale.report</code></b> (after truncate).</li>
+  <li><b>Order-lines nightly top-up</b> — 02:00, upserts last ~10 days from <code>sale.report</code>.
+      (No <code>write_date</code> → cancellations/old edits are cleared by an occasional full re-backfill.)</li>
+</ul>
+
+<h2>9. ⚙️ Recommended architecture for the NEW build</h2>
+<div class="card warn">
+  The removed page loaded <b>~100k raw lines into the browser</b> → slow, and its ~100 paginated
+  requests slowed the whole Supabase project. <b>Do not repeat that.</b> Instead:
+  <b>aggregate server-side</b> — create Postgres <b>RPCs / views</b> returning the summaries the UI needs
+  (frozen list, top products for a window+filters, per-product drill), with filters as parameters.
+  The browser then downloads <b>kilobytes, not megabytes</b>, and stays fast at any history depth.
+</div>
+
+<h2>10. Checklist for the new session</h2>
+<ul>
+  <li>☑ Reuse <code>auth.js</code> login (RLS needs a JWT; anon alone reads nothing).</li>
+  <li>☑ Read products, stock, order_lines, customers.</li>
+  <li>☑ Treat <code>qty</code> as <b>already normalized</b> (matches Odoo Qty Ordered); it can be fractional.</li>
+  <li>☑ Confirmed only; bucket dates in Baghdad; use <code>date_order</code>.</li>
+  <li>☑ Exclude <code>عارضات|استاندات</code>; revenue = <code>price_subtotal</code>; escape DB strings.</li>
+  <li>☑ Verify in Odoo Sales Analysis with the <b>next-day end date</b>.</li>
+  <li>☑ Prefer <b>server-side aggregation</b> over loading all lines.</li>
+  <li>☑ Copy <code>products-calc.js</code> + tests; reuse <code>sbGetAll</code> + <code>bagDay</code>.</li>
+</ul>
+
+<footer>Dabboos — Products Dashboard build guide · same Supabase, Odoo-verified numbers</footer>
+</div>
+</body>
+</html>

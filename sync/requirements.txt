@@ -1,0 +1,8 @@
+httpx>=0.27
+
+# The IANA timezone database. zoneinfo is stdlib but ships NO database on
+# Windows, so ZoneInfo("Asia/Baghdad") raises ZoneInfoNotFoundError there --
+# which killed stock_history on the first real scheduled run, and with it the
+# summary refresh that every page reads. Linux runners have a system tzdb, so
+# this failure is invisible on GitHub Actions and certain on a Windows box.
+tzdata>=2024.1

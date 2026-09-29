@@ -1,0 +1,257 @@
+{
+  "name": "Dabboos Customers Sync (product dashboard)",
+  "nodes": [
+    {
+      "id": "u1",
+      "name": "Run once",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -220,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "u2",
+      "name": "Every 60 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -220,
+        380
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 60
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "u3",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "supabaseUrl",
+              "value": "__SUPABASE_URL__",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "serviceKey",
+              "value": "__SERVICE_ROLE_KEY__",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "u4",
+      "name": "Odoo Customers",
+      "type": "n8n-nodes-base.odoo",
+      "typeVersion": 1,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "resource": "custom",
+        "customResource": "res.partner",
+        "operation": "getAll",
+        "returnAll": true,
+        "options": {
+          "fieldsList": [
+            "complete_name",
+            "name",
+            "city",
+            "state_id",
+            "user_id",
+            "credit",
+            "credit_limit",
+            "customer_rank"
+          ]
+        },
+        "filterRequest": {
+          "filter": []
+        }
+      },
+      "credentials": {
+        "odooApi": {
+          "id": "DAW2ZSmcDoBe0fTJ",
+          "name": "live-version"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "u5",
+      "name": "Shape",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\n// res.partner -> dashboard_customers. Real customers only (customer_rank > 0).\n// governorate comes from state_id, the SAME field the invoice lines use, so\n// the two sources agree by construction instead of by string matching.\nconst arr = v => Array.isArray(v) ? v[1] : ((v === false || v == null) ? null : v);\nconst id0 = v => Array.isArray(v) ? v[0] : ((v === false || v == null) ? null : v);\nconst num = n => Number(n) || 0;\nconst txt = v => (v === false || v == null || v === '') ? null : v;\n\nconst now = new Date().toISOString();\nconst rows = [];\nfor (const p of $input.all().map(i => i.json)) {\n  if (!p || p.id == null) continue;\n  if (!(num(p.customer_rank) > 0)) continue;\n  rows.push({\n    partner_id:    p.id,\n    complete_name: txt(p.complete_name) || arr(p.name),\n    governorate:   arr(p.state_id),\n    city:          txt(p.city),\n    salesperson:   arr(p.user_id),\n    user_id:       id0(p.user_id),\n    credit:        num(p.credit),\n    credit_limit:  num(p.credit_limit),\n    updated_at:    now\n  });\n}\nreturn [{ json: { rows, count: rows.length } }];\n"
+      }
+    },
+    {
+      "id": "u6",
+      "name": "Chunk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst rows = $json.rows || [];\nconst CH = 500, items = [];\nfor (let i = 0; i < rows.length; i += CH) items.push({ json: { rows: rows.slice(i, i + CH) } });\nreturn items.length ? items : [{ json: { rows: [] } }];\n"
+      }
+    },
+    {
+      "id": "u7",
+      "name": "Upsert Customers",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        840,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/dashboard_customers?on_conflict=partner_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.serviceKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.serviceKey }}"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rows) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "u8",
+      "name": "note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        -140
+      ],
+      "parameters": {
+        "content": "## Customers sync (hourly)\n`res.partner` -> `dashboard_customers`, real customers only (customer_rank > 0).\nNeeded for the per-product customer drill-down: the invoice report carries a partner_id\nbut no customer name.\n\n**governorate comes from `state_id`** - the same field the invoice lines use - so the two\nsources agree by construction rather than by matching city-name strings.\n\nReplace `__SUPABASE_URL__` and `__SERVICE_ROLE_KEY__` in Config before running.",
+        "height": 240,
+        "width": 580
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Run once": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 60 min": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Odoo Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Odoo Customers": {
+      "main": [
+        [
+          {
+            "node": "Shape",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape": {
+      "main": [
+        [
+          {
+            "node": "Chunk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk": {
+      "main": [
+        [
+          {
+            "node": "Upsert Customers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

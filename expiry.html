@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>الصلاحية — دبوس</title>
+<link rel="stylesheet" href="assets/css/style.css?v=36">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⏳</text></svg>">
+</head>
+<body>
+  <div id="shell" class="hidden"></div>
+  <noscript><main><div class="state error">This dashboard needs JavaScript enabled.</div></main></noscript>
+  <main id="app" class="hidden">
+    <div id="boot" class="state">Loading…</div>
+    <div id="health"></div>
+
+    <!-- Lot-level expiry is a "now" snapshot, so no date range — one control
+         set: which warehouse, and the product hierarchy, plus the window that
+         counts as "expiring soon". -->
+    <div id="filters" class="filters"></div>
+    <p class="sub" data-t="br.expirySub"></p>
+    <div id="tiles" class="tiles"></div>
+
+    <div class="card">
+      <h2 data-t="br.expiryTitle">—</h2>
+      <p class="sub" id="count"></p>
+      <div id="table"></div>
+    </div>
+
+  </main>
+
+  <script>
+    window.addEventListener('error', e => {
+      const app = document.getElementById('app');
+      if (!app) return;
+      app.classList.remove('hidden');
+      const boot = document.getElementById('boot');
+      const msg = (e.message || 'Script failed to load') +
+                  (e.filename ? ' — ' + e.filename.split('/').pop() : '');
+      if (boot) { boot.className = 'state error'; boot.textContent = msg; }
+    }, true);
+  </script>
+  <script type="module" src="assets/js/pages/expiry.js?v=36"></script>
+</body>
+</html>

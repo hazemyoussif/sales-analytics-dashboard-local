@@ -1,0 +1,153 @@
+{
+  "name": "Dabboos Invoice Report INTROSPECT",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "id": "aa000000-0000-4000-8000-000000000001",
+      "name": "Run once"
+    },
+    {
+      "parameters": {
+        "content": "## Invoice Report INTROSPECT (read-only)\nProves what `account.invoice.report` actually exposes on THIS Odoo before any\nsync is written. Writes nothing anywhere.\n\n**Sample Refunds** returns 5 posted CREDIT NOTES with every readable field\n(no fieldsList = Odoo returns them all). Two things to read off it:\n1. the full field list -> confirms move_id / invoice_user_id /\n   commercial_partner_id / payment_state exist\n2. whether `quantity` and `price_subtotal` are NEGATIVE\n\nIf refunds are NOT negative, the sync must negate them explicitly or every\nreturn will ADD to revenue instead of subtracting.\n\n**Sample Invoices** is the same for 5 normal invoices, to compare signs.\n\nUses the existing `live-version` Odoo credential. Nothing to configure -\njust Run once, then send the Report node's output back.",
+        "height": 380,
+        "width": 520
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-40, -140],
+      "id": "aa000000-0000-4000-8000-000000000002",
+      "name": "note-introspect"
+    },
+    {
+      "parameters": {
+        "resource": "custom",
+        "customResource": "account.invoice.report",
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 5,
+        "options": {},
+        "filterRequest": {
+          "filter": [
+            { "fieldName": "state", "operator": "equal", "value": "posted" },
+            { "fieldName": "move_type", "operator": "equal", "value": "out_refund" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.odoo",
+      "typeVersion": 1,
+      "position": [260, 220],
+      "id": "aa000000-0000-4000-8000-000000000003",
+      "name": "Sample Refunds",
+      "credentials": {
+        "odooApi": { "id": "DAW2ZSmcDoBe0fTJ", "name": "live-version" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "custom",
+        "customResource": "account.invoice.report",
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 5,
+        "options": {},
+        "filterRequest": {
+          "filter": [
+            { "fieldName": "state", "operator": "equal", "value": "posted" },
+            { "fieldName": "move_type", "operator": "equal", "value": "out_invoice" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.odoo",
+      "typeVersion": 1,
+      "position": [260, 400],
+      "id": "aa000000-0000-4000-8000-000000000004",
+      "name": "Sample Invoices",
+      "credentials": {
+        "odooApi": { "id": "DAW2ZSmcDoBe0fTJ", "name": "live-version" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "custom",
+        "customResource": "product.template",
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 1,
+        "options": {
+          "fieldsList": [
+            "display_name",
+            "default_code",
+            "categ_id",
+            "standard_price",
+            "list_price",
+            "uom_id",
+            "active"
+          ]
+        },
+        "filterRequest": { "filter": [] }
+      },
+      "type": "n8n-nodes-base.odoo",
+      "typeVersion": 1,
+      "position": [260, 580],
+      "id": "aa000000-0000-4000-8000-000000000006",
+      "name": "Sample Product",
+      "credentials": {
+        "odooApi": { "id": "DAW2ZSmcDoBe0fTJ", "name": "live-version" }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "custom",
+        "customResource": "product.template",
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 1,
+        "options": { "fieldsList": ["display_name", "product_brand_id"] },
+        "filterRequest": { "filter": [] }
+      },
+      "type": "n8n-nodes-base.odoo",
+      "typeVersion": 1,
+      "position": [260, 740],
+      "id": "aa000000-0000-4000-8000-000000000007",
+      "name": "Brand Probe",
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "odooApi": { "id": "DAW2ZSmcDoBe0fTJ", "name": "live-version" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Summarise what Odoo returned so the answer is readable at a glance\n// instead of buried in raw JSON.\nconst refunds  = $('Sample Refunds').all().map(i => i.json);\nconst invoices = $('Sample Invoices').all().map(i => i.json);\nconst product  = $('Sample Product').all().map(i => i.json)[0] || {};\n\n// Does product.template.product_brand_id exist? dashboard_products.brand is\n// currently hardcoded to null by the products sync, so every brand breakdown\n// in the dashboard would silently render empty. The Brand Probe node is set to\n// continue on error, so an unknown field name lands here as an error payload\n// rather than killing the run.\nlet brandRow = {};\ntry { brandRow = $('Brand Probe').all().map(i => i.json)[0] || {}; } catch (e) { brandRow = { error: String(e) }; }\nconst brandWorks = Object.prototype.hasOwnProperty.call(brandRow, 'product_brand_id');\nconst productFields = Object.keys(product).sort();\n\nconst fields = Object.keys(refunds[0] || invoices[0] || {}).sort();\nconst want = ['move_id','invoice_user_id','commercial_partner_id','payment_state',\n              'quantity','price_subtotal','price_total','invoice_date','product_id'];\n\nconst present = {};\nfor (const f of want) present[f] = fields.includes(f);\n\nconst sign = rows => {\n  if (!rows.length) return 'NO ROWS FOUND';\n  const q = rows.map(r => Number(r.quantity));\n  const p = rows.map(r => Number(r.price_subtotal));\n  return { quantity: q, price_subtotal: p,\n           all_qty_negative: q.every(v => v < 0),\n           all_subtotal_negative: p.every(v => v < 0) };\n};\n\nconst rs = sign(refunds);\nreturn [{ json: {\n  field_count: fields.length,\n  all_fields: fields,\n  expected_fields_present: present,\n  refund_signs:  rs,\n  invoice_signs: sign(invoices),\n  product_fields: productFields,\n  brand_probe_raw: brandRow,\n  BRAND_VERDICT: brandWorks\n    ? ('product.template.product_brand_id EXISTS - value: ' + JSON.stringify(brandRow.product_brand_id))\n    : 'product_brand_id NOT readable - brand must be dropped from the design or sourced elsewhere',\n  VERDICT: refunds.length\n    ? (rs.all_qty_negative\n        ? 'Credit notes ARE negative - the sync can sum directly.'\n        : 'WARNING: credit notes are NOT negative - the sync MUST negate out_refund rows.')\n    : 'No posted credit notes found - sign behaviour unverified.'\n} }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300],
+      "id": "aa000000-0000-4000-8000-000000000005",
+      "name": "Report"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Run once": {
+      "main": [[{ "node": "Sample Refunds", "type": "main", "index": 0 }]]
+    },
+    "Sample Refunds": {
+      "main": [[{ "node": "Sample Invoices", "type": "main", "index": 0 }]]
+    },
+    "Sample Invoices": {
+      "main": [[{ "node": "Sample Product", "type": "main", "index": 0 }]]
+    },
+    "Sample Product": {
+      "main": [[{ "node": "Brand Probe", "type": "main", "index": 0 }]]
+    },
+    "Brand Probe": {
+      "main": [[{ "node": "Report", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "tags": []
+}

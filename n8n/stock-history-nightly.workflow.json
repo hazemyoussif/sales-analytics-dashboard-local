@@ -1,0 +1,208 @@
+{
+  "name": "Dabboos Stock History NIGHTLY",
+  "nodes": [
+    {
+      "id": "s1",
+      "name": "Run once",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -220,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "s2",
+      "name": "Daily 03:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -220,
+        380
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "s3",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "supabaseUrl",
+              "value": "__SUPABASE_URL__",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "serviceKey",
+              "value": "__SERVICE_ROLE_KEY__",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "s4",
+      "name": "Snapshot Stock",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\n// Read every row of dashboard_stock from THIS project and stamp it with\n// today's Baghdad date. Paged, because PostgREST caps responses at 1000 rows.\nconst cfg = $('Config').first().json;\nconst base = cfg.supabaseUrl +\n  '/rest/v1/dashboard_stock?select=product_id,on_hand_qty,stock_value&order=product_id.asc';\nconst hdr = { apikey: cfg.serviceKey, Authorization: 'Bearer ' + cfg.serviceKey };\n\nconst all = [];\nfor (let offset = 0; offset < 500000; offset += 1000) {\n  const page = await this.helpers.httpRequest({\n    method: 'GET', url: base + '&limit=1000&offset=' + offset, headers: hdr, json: true });\n  const rows = Array.isArray(page) ? page : [];\n  all.push(...rows);\n  if (rows.length < 1000) break;\n}\n\n// Baghdad, not UTC: a 03:00 Baghdad run is still the previous day in UTC, and\n// stamping it as such would put two snapshots on one date and none on another.\nconst snap_date = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Baghdad' });\n\nconst rows = all.map(s => ({\n  product_id:  s.product_id,\n  snap_date,\n  on_hand_qty: Number(s.on_hand_qty) || 0,\n  stock_value: s.stock_value == null ? null : Number(s.stock_value)\n}));\n\nif (!rows.length) throw new Error('dashboard_stock is empty - run the products+stock sync first');\nreturn [{ json: { rows, count: rows.length, snap_date } }];\n"
+      }
+    },
+    {
+      "id": "s5",
+      "name": "Chunk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\nconst rows = $json.rows || [];\nconst CH = 500, items = [];\nfor (let i = 0; i < rows.length; i += CH) items.push({ json: { rows: rows.slice(i, i + CH) } });\nreturn items.length ? items : [{ json: { rows: [] } }];\n"
+      }
+    },
+    {
+      "id": "s6",
+      "name": "Append Snapshot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        640,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/dashboard_stock_history?on_conflict=product_id,snap_date",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.serviceKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.serviceKey }}"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.rows) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "s7",
+      "name": "note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        -180
+      ],
+      "parameters": {
+        "content": "## Stock History snapshot (03:00 daily)\nAppends one row per product per day to `dashboard_stock_history`.\n\n**Activate this immediately.** `dashboard_stock` only ever holds TODAY - yesterday's\non-hand is overwritten and gone. Every day this is off is a day of history that can\nNEVER be recovered, and it is what later powers cover-days trend, stockout counts and\nreal inventory turns.\n\nRuns at 03:00 so the 2-hourly products+stock sync has already refreshed the source.\nUpsert on (product_id, snap_date): re-running today overwrites today and never touches\nan earlier day.\n\nNothing reads this table yet. That is expected - it is accumulating for later.",
+        "height": 300,
+        "width": 580
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Run once": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily 03:00": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Snapshot Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Snapshot Stock": {
+      "main": [
+        [
+          {
+            "node": "Chunk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chunk": {
+      "main": [
+        [
+          {
+            "node": "Append Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

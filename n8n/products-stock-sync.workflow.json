@@ -1,0 +1,278 @@
+{
+  "name": "Dabboos Products + Stock Sync (product dashboard)",
+  "nodes": [
+    {
+      "id": "p1",
+      "name": "Run once",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -220,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "p2",
+      "name": "Every 2 hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -220,
+        380
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "p3",
+      "name": "Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c1",
+              "name": "supabaseUrl",
+              "value": "__SUPABASE_URL__",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "serviceKey",
+              "value": "__SERVICE_ROLE_KEY__",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "p4",
+      "name": "Odoo Products",
+      "type": "n8n-nodes-base.odoo",
+      "typeVersion": 1,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "resource": "custom",
+        "customResource": "product.product",
+        "operation": "getAll",
+        "returnAll": true,
+        "options": {
+          "fieldsList": [
+            "display_name",
+            "default_code",
+            "categ_id",
+            "standard_price",
+            "list_price",
+            "uom_id",
+            "active",
+            "qty_available",
+            "product_brand_id"
+          ]
+        },
+        "filterRequest": {
+          "filter": []
+        }
+      },
+      "credentials": {
+        "odooApi": {
+          "id": "DAW2ZSmcDoBe0fTJ",
+          "name": "live-version"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "p5",
+      "name": "Shape",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        300
+      ],
+      "parameters": {
+        "jsCode": "\n// product.product -> dashboard_products + dashboard_stock.\n// qty_available = company-wide on-hand in the PRODUCT'S OWN UoM, which is why\n// quantities are fractional cartons rather than integers. Products with zero\n// quantity still emit a stock row (0) so \"no stock\" and \"not synced\" can never\n// be confused. stock_value = on-hand x cost (approximate).\nconst arr = v => Array.isArray(v) ? v[1] : ((v === false || v == null) ? null : v);\nconst id0 = v => Array.isArray(v) ? v[0] : ((v === false || v == null) ? null : v);\nconst num = n => Number(n) || 0;\nconst txt = v => (v === false || v == null || v === '') ? null : v;\n\nconst now = new Date().toISOString();\nconst products = [], stock = [];\nfor (const p of $input.all().map(i => i.json)) {\n  if (!p || p.id == null) continue;\n  const cost = num(p.standard_price);\n  products.push({\n    product_id: p.id,\n    name:       txt(p.display_name),\n    sku:        txt(p.default_code),\n    category:   arr(p.categ_id),\n    brand:      arr(p.product_brand_id),   // real brand, not the hardcoded null\n    cost,\n    list_price: num(p.list_price),\n    uom:        arr(p.uom_id),\n    active:     p.active !== false,\n    updated_at: now\n  });\n  const qty = num(p.qty_available);\n  stock.push({ product_id: p.id, on_hand_qty: qty, stock_value: qty * cost, updated_at: now });\n}\nreturn [{ json: { products, stock, count: products.length } }];\n"
+      }
+    },
+    {
+      "id": "p6",
+      "name": "Upsert Products",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/dashboard_products?on_conflict=product_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.serviceKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.serviceKey }}"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Shape').first().json.products) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "p7",
+      "name": "Upsert Stock",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        400
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.supabaseUrl }}/rest/v1/dashboard_stock?on_conflict=product_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.serviceKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.serviceKey }}"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Shape').first().json.stock) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "p8",
+      "name": "note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -260,
+        -180
+      ],
+      "parameters": {
+        "content": "## Products + Stock sync (every 2h)\nClone of the Sales Command Center's sync, repointed at the NEW project.\n`product.product` -> `dashboard_products` + `dashboard_stock`, upserted on product_id.\n\n**Difference from the original:** brand is read from `product_brand_id` instead of being\nhardcoded to NULL. If Odoo rejects that field on product.product, delete it from the\nfieldsList and from the shaper - the dashboard's brand analysis uses the invoice lines\nanyway, so nothing breaks.\n\nReplace `__SUPABASE_URL__` and `__SERVICE_ROLE_KEY__` in Config before running.\nRun once manually, confirm row counts, then activate.",
+        "height": 300,
+        "width": 580
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Run once": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Every 2 hours": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Odoo Products",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Odoo Products": {
+      "main": [
+        [
+          {
+            "node": "Shape",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shape": {
+      "main": [
+        [
+          {
+            "node": "Upsert Products",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Upsert Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

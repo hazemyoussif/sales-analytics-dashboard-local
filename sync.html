@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>حالة المزامنة — دبوس</title>
+<link rel="stylesheet" href="assets/css/style.css?v=36">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔄</text></svg>">
+</head>
+<body>
+  <div id="shell" class="hidden"></div>
+  <noscript><main><div class="state error">This dashboard needs JavaScript enabled.</div></main></noscript>
+  <main id="app" class="hidden">
+    <div id="boot" class="state">Loading…</div>
+
+    <!-- The banner is first on purpose. A sync that cannot reach Supabase
+         writes no error row at all, so an error list would look healthy
+         through a total outage. How long since the last SUCCESS is the only
+         signal that catches every failure mode. -->
+    <div id="banner"></div>
+    <div id="tiles" class="tiles"></div>
+
+    <!-- Admin-only, and only when a sync-runner service is configured
+         (assets/js/config.js → SYNC_RUNNER_URL). Populated by sync.js. -->
+    <div id="actions"></div>
+
+    <div class="card">
+      <h2>التشغيلات الأخيرة</h2>
+      <p class="sub">كل مهمة على حدة، والأحدث أولاً. المهمة الأخيرة
+        <code>refresh</code> هي الوحيدة التي يتغيّر بنجاحها ما تراه الصفحات —
+        بقية المهام تكتب في جداول لا تقرأها الصفحات مباشرة.</p>
+      <div id="runs"></div>
+    </div>
+  </main>
+  <script type="module" src="assets/js/pages/sync.js?v=36"></script>
+</body>
+</html>

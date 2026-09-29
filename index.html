@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>لوحة المنتجات — دبوس</title>
+<link rel="stylesheet" href="assets/css/style.css?v=36">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+</head>
+<body>
+  <div id="shell" class="hidden"></div>
+  <noscript><main><div class="state error">This dashboard needs JavaScript enabled.</div></main></noscript>
+  <main id="app" class="hidden">
+    <div id="boot" class="state">Loading…</div>
+    <div id="health"></div>
+    <div id="filters" class="filters"></div>
+    <div id="tiles" class="tiles"></div>
+    <div id="adjustments"></div>
+
+    <div class="card">
+      <h2 data-t="neverSoldTitle">Never sold</h2>
+      <p class="sub" data-t="neverSoldSub">In the catalogue but on no invoice</p>
+      <div id="never-sold"></div>
+    </div>
+
+    <div class="card">
+      <h2 id="h-top" data-t="pg.topProducts">Top products</h2>
+      <p class="sub" data-t="pg.topProductsSub">By untaxed revenue, net of returns</p>
+      <div id="top-products"></div>
+    </div>
+
+    <div class="card">
+      <h2 data-t="pg.categories">Categories</h2>
+      <p class="sub" data-t="pg.categoriesSub">Revenue share by product category</p>
+      <div id="by-category"></div>
+    </div>
+
+    <div class="card">
+      <h2 data-t="pg.products">Products</h2>
+      <p class="sub" data-t="pg.productsSub">Top 60 by revenue</p>
+      <div id="table"></div>
+    </div>
+  </main>
+
+  <!-- Last-resort visibility: if the module fails to parse or a dependency 404s,
+       nothing else runs and the page would otherwise stay a blank background. -->
+  <script>
+    window.addEventListener('error', e => {
+      const app = document.getElementById('app');
+      if (!app) return;
+      app.classList.remove('hidden');
+      const boot = document.getElementById('boot');
+      const msg = (e.message || 'Script failed to load') +
+                  (e.filename ? ' — ' + e.filename.split('/').pop() : '');
+      if (boot) { boot.className = 'state error'; boot.textContent = msg; }
+    }, true);
+  </script>
+  <script type="module" src="assets/js/pages/overview.js?v=36"></script>
+</body>
+</html>

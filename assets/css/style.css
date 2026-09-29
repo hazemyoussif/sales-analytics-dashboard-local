@@ -1,0 +1,590 @@
+/* Dabboos Product Dashboard — theme, layout, chart marks.
+   Colours are the validated data-viz palette; roles, never raw hex, in the body. */
+
+:root {
+  color-scheme: light;
+  --plane:        #f9f9f7;
+  --surface:      #fcfcfb;
+  --ink:          #0b0b0b;
+  --ink-2:        #52514e;
+  --muted:        #898781;
+  --grid:         #e1e0d9;
+  --axis:         #c3c2b7;
+  --ring:         rgba(11, 11, 11, .10);
+
+  --s1: #2a78d6;  --s2: #eb6834;  --s3: #1baf7a;  --s4: #eda100;
+  --s5: #e87ba4;  --s6: #008300;  --s7: #4a3aa7;  --s8: #e34948;
+
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-text: #006300;
+
+  --radius: 10px;
+  --gap: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --plane: #0d0d0d; --surface: #1a1a19;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835;
+    --ring: rgba(255, 255, 255, .10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+    --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --good-text: #0ca30c;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --plane: #0d0d0d; --surface: #1a1a19;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835;
+  --ring: rgba(255, 255, 255, .10);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+  --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+  --good-text: #0ca30c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--plane);
+  color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Arabic is the default and the page is RTL; English flips it. */
+body[dir="ltr"] { text-align: left; }
+
+a { color: var(--s1); }
+
+/* ------------------------------------------------------------------ shell */
+.topbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--ring);
+  position: sticky; top: 0; z-index: 20;
+}
+.brand { font-weight: 700; font-size: 16px; margin-inline-end: auto; }
+
+/* The basis label is permanent on purpose: these numbers are on the invoice
+   basis and will NOT match the sales dashboard. Stating it makes the
+   difference read as intentional rather than as a bug. */
+.basis {
+  font-size: 12px; color: var(--ink-2);
+  border: 1px solid var(--ring); border-radius: 999px;
+  padding: 3px 10px; white-space: nowrap;
+}
+
+.btn {
+  font: inherit; font-size: 13px;
+  color: var(--ink); background: var(--surface);
+  border: 1px solid var(--ring); border-radius: 8px;
+  padding: 6px 12px; cursor: pointer;
+}
+.btn:hover { border-color: var(--axis); }
+.btn.primary { background: var(--s1); border-color: var(--s1); color: #fff; }
+
+main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+
+/* ------------------------------------------------------------------ cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--ring);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: var(--gap);
+}
+.card > h2 {
+  margin: 0 0 4px; font-size: 15px; font-weight: 650;
+}
+.card > .sub { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
+
+/* ------------------------------------------------------------- stat tiles */
+.tiles {
+  display: grid; gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  margin-bottom: var(--gap);
+}
+.tile {
+  background: var(--surface); border: 1px solid var(--ring);
+  border-radius: var(--radius); padding: 14px 16px;
+}
+.tile .label { font-size: 12.5px; color: var(--ink-2); }
+.tile .value { font-size: 30px; font-weight: 600; line-height: 1.15; margin-top: 6px; }
+/* The share sits beside the headline number, not under it. Smaller and lighter
+   so it reads as an annotation, but on the same line so it is impossible to
+   miss — which a 12px grey note underneath very much is. */
+.tile .value .share {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink-2);
+  margin-inline-start: 8px;
+  white-space: nowrap;
+}
+.tile .note  { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+/* ---- "where did this number come from" marker -------------------------
+   Shown on hover, and on focus so it is reachable by keyboard and by tap --
+   a <button> takes focus when touched, which is what makes this work on a
+   phone without any JavaScript.
+   The bubble is allowed to overflow its tile (nothing here sets
+   overflow:hidden) because a tile is 190px wide at its narrowest and a
+   definition that fits in 190px is not a definition. */
+.info-wrap { position: relative; display: inline-block; margin-inline-start: 5px; }
+.info-wrap .info {
+  font: inherit; font-size: 10.5px; font-weight: 700; font-style: italic;
+  line-height: 14px; width: 15px; height: 15px; padding: 0;
+  border-radius: 50%; cursor: help; vertical-align: 1px;
+  color: var(--ink-2); background: transparent;
+  border: 1px solid var(--ink-2); opacity: .6;
+}
+.info-wrap .info:hover, .info-wrap .info:focus-visible { opacity: 1; }
+.info-wrap .info:focus-visible { outline: 2px solid var(--focus, #2563eb); outline-offset: 2px; }
+.info-wrap .info-pop {
+  display: none; position: absolute; z-index: 20;
+  inset-block-start: calc(100% + 6px); inset-inline-start: -6px;
+  width: min(300px, 74vw);
+  background: var(--surface); color: var(--ink-2);
+  border: 1px solid var(--ring); border-radius: var(--radius);
+  box-shadow: 0 10px 28px -14px rgba(0,0,0,.55);
+  padding: 9px 11px; font-size: 12px; line-height: 1.65;
+  white-space: normal; text-align: start;
+}
+.info-wrap:hover .info-pop, .info-wrap:focus-within .info-pop { display: block; }
+
+/* Labelled rows, so "which Odoo document is this?" is answered on the first
+   line instead of somewhere inside a paragraph. Grid rather than float so the
+   terms stay aligned in both directions -- this renders RTL and LTR. */
+.info-dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; margin: 0; }
+.info-dl dt {
+  font-weight: 700; color: var(--ink); white-space: nowrap;
+  font-size: 11px; padding-top: 1px;
+}
+.info-dl dd { margin: 0; }
+
+/* A caveat about the NUMBER, not a description of it -- so it must not read as
+   quietly as .note, which people skim past. Amber and carrying its own ⚠, so
+   it survives greyscale and forced-colours; wrapping rather than truncating,
+   because a half-shown warning is worse than none. */
+.tile .tile-flag {
+  font-size: 11.5px; line-height: 1.35; margin-top: 6px;
+  color: var(--warning, #fab219);
+  white-space: normal;
+}
+.tile.accent-1 { border-inline-start: 3px solid var(--s1); }
+.tile.accent-3 { border-inline-start: 3px solid var(--s3); }
+.tile.accent-8 { border-inline-start: 3px solid var(--s8); }
+
+/* --------------------------------------------------------------- bar rows */
+/* Horizontal bars: magnitude by length, 4px rounded data-end anchored to the
+   baseline, direct label on every row (few enough rows to justify it). */
+.bars { display: flex; flex-direction: column; gap: 9px; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.bar-label {
+  font-size: 13px; color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bar-track {
+  grid-column: 1 / -1; display: block;
+  height: 10px; background: var(--grid); border-radius: 3px; overflow: hidden;
+}
+/* display:block is load-bearing — these are <span>s, and an inline element
+   ignores width and height, so the fill renders as nothing at all. */
+.bar-fill  { display: block; height: 100%; border-radius: 3px; background: var(--s1); min-width: 2px; }
+.bar-value { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--ink); white-space: nowrap; }
+/* The share of the whole period, beside the row's own figure. Same treatment
+   as .tile .value .share -- lighter and smaller so it annotates rather than
+   competes -- and tabular so the percentages line up down the column.
+   These do NOT sum to 100: the list is a top-N and the denominator is
+   everything, including the rows that did not make it. */
+.bar-share {
+  font-size: 12px; font-weight: 500; color: var(--ink-2);
+  margin-inline-start: 6px; font-variant-numeric: tabular-nums;
+}
+
+/* ----------------------------------------------------------------- tables */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { padding: 8px 10px; border-bottom: 1px solid var(--grid); text-align: start; }
+th {
+  font-size: 12px; font-weight: 600; color: var(--ink-2);
+  position: sticky; top: 0; background: var(--surface); white-space: nowrap;
+}
+td.n, th.n { text-align: end; font-variant-numeric: tabular-nums; }
+tbody tr:hover { background: color-mix(in oklab, var(--s1) 7%, transparent); }
+
+/* ------------------------------------------------------------------ chips */
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11.5px; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--ring); white-space: nowrap;
+}
+/* Status always ships with a word, never colour alone. */
+.chip.dead     { color: var(--critical); border-color: var(--critical); }
+.chip.dormant  { color: var(--serious);  border-color: var(--serious); }
+.chip.under    { color: var(--warning);  border-color: var(--warning); }
+.chip.over     { color: var(--s7);       border-color: var(--s7); }
+.chip.healthy  { color: var(--good-text); border-color: var(--good); }
+
+/* ---------------------------------------------------------------- filters */
+/* A GRID, not a flex row.
+   As flex with align-items:end, one tall control set the height of its whole
+   line: the 176px category checklist made every select on that row sit at the
+   bottom of a 176px band, which read as the list floating loose above an empty
+   strip. In a grid each cell is independent, so a tall field makes only its
+   own row taller and everything else stays put.
+   auto-fill with a CAPPED max keeps the controls at a readable width instead
+   of stretching two fields across the page, which 1fr would do on the period
+   card where there are only two. */
+/* The base stays a flex row, because admin.html reuses .filters for its TAB
+   BUTTONS. Gridding it unconditionally would have stretched each tab to a
+   190px track -- a page nobody would have opened for days. The grid applies
+   only where the container actually holds form fields. */
+.filters {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: 10px; margin-bottom: var(--gap);
+}
+.filters:has(> .field) {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 190px));
+  justify-content: start;
+  align-items: start;
+  gap: 12px;
+}
+/* min-width:0 or a long option value forces the column wider than its track
+   and the whole grid overflows sideways. */
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.field label { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
+/* DIRECT children only. `.field input` also matched every checkbox inside the
+   category checklist -- which lives inside a .field -- so each one was handed
+   width:100% and height:34px and rendered as a giant blue square with the
+   label squeezed to nothing beside it. The child combinator scopes this to the
+   field's own control and leaves anything nested deeper alone. */
+.field > input, .field > select {
+  font: inherit; font-size: 13px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--ring);
+  border-radius: 8px; padding: 0 9px; height: 34px;
+  width: 100%; min-width: 0;
+}
+.field > select { cursor: pointer; }
+.field > input:hover, .field > select:hover { border-color: var(--ink-2); }
+.field > input:focus-visible, .field > select:focus-visible {
+  outline: 2px solid var(--focus, #2563eb); outline-offset: 1px; border-color: transparent;
+}
+/* A row of choice buttons. The pressed one is marked by weight and border as
+   well as colour, so it survives greyscale and forced-colours mode. */
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.btn-row button {
+  font: inherit; font-size: 12.5px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--ring);
+  border-radius: 999px; padding: 5px 12px; cursor: pointer;
+}
+.btn-row button:hover { background: var(--hover, rgba(127,127,127,.09)); }
+.btn-row button[aria-pressed="true"] {
+  border-color: var(--s1); font-weight: 600;
+}
+.btn-row button:focus-visible {
+  outline: 2px solid var(--focus, #2563eb); outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------- checklist */
+/* Choosing several of something. Replaces <select multiple>, whose Ctrl-click
+   convention is invisible and, when half-known, silently drops the previous
+   selection.
+   Scrolls past roughly eight rows: sixty categories would otherwise push every
+   number on the page below the fold. */
+/* A MULTI-SELECT THAT LOOKS LIKE THE SINGLE-SELECTS BESIDE IT.
+   An always-open list was two grid columns wide and 132px tall in a row of
+   34px dropdowns -- correct but visibly foreign, and it set the height of its
+   whole row. Closed, this is the same box as a <select>: same height, border,
+   radius and caret. Open, the panel is absolutely positioned, so expanding it
+   does not move a single other control. */
+.picker { position: relative; width: 100%; min-width: 0; }
+.picker > summary {
+  list-style: none; cursor: pointer;
+  display: flex; align-items: center; gap: 6px;
+  height: 34px; padding: 0 9px;
+  font-size: 13px; color: var(--ink);
+  background: var(--surface); border: 1px solid var(--ring); border-radius: 8px;
+}
+.picker > summary::-webkit-details-marker { display: none; }
+.picker > summary > span {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Our own caret, since the native marker is hidden. Rotates when open, which
+   is the only cue that the panel below belongs to this control. */
+.picker > summary::after {
+  content: ''; flex: none; width: 7px; height: 7px;
+  border-inline-end: 1.6px solid var(--ink-2); border-block-end: 1.6px solid var(--ink-2);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform .15s ease;
+}
+.picker[open] > summary::after { transform: rotate(-135deg) translate(-3px, -3px); }
+@media (prefers-reduced-motion: reduce) { .picker > summary::after { transition: none; } }
+.picker > summary:hover { border-color: var(--ink-2); }
+.picker > summary:focus-visible {
+  outline: 2px solid var(--focus, #2563eb); outline-offset: 1px; border-color: transparent;
+}
+.picker[open] > summary { border-color: var(--s1); }
+
+.picker-panel {
+  position: absolute; z-index: 30; inset-inline-start: 0;
+  inset-block-start: calc(100% + 4px);
+  min-width: 100%; width: max-content; max-width: min(320px, 78vw);
+  background: var(--surface); border: 1px solid var(--ring); border-radius: 8px;
+  box-shadow: 0 12px 30px -12px rgba(0, 0, 0, .55);
+  padding: 4px; max-height: 244px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 1px;
+  scrollbar-width: thin; scrollbar-color: var(--ring) transparent;
+}
+.picker-panel::-webkit-scrollbar { width: 9px; }
+.picker-panel::-webkit-scrollbar-track { background: transparent; }
+.picker-panel::-webkit-scrollbar-thumb {
+  background: var(--ring); border-radius: 9px; border: 3px solid var(--surface);
+}
+.picker-panel::-webkit-scrollbar-thumb:hover { background: var(--ink-2); }
+.picker-panel label {
+  display: flex; align-items: center; gap: 7px;
+  padding: 4px 7px; border-radius: 5px;
+  font-size: 12.5px; color: var(--ink); line-height: 1.3;
+  cursor: pointer; user-select: none;
+}
+/* The whole row is the hit target, not the 13px box. */
+.picker-panel label:hover { background: var(--hover, rgba(127,127,127,.09)); }
+/* Sized explicitly rather than left to inherit. Belt and braces after the
+   .field input rule above swallowed these: a checkbox that gets its
+   dimensions from a generic input rule is a checkbox waiting to be 34px tall
+   again the next time that rule is touched. */
+.picker-panel input {
+  margin: 0; flex: none; accent-color: var(--s1);
+  width: 14px; height: 14px; min-width: 0; padding: 0;
+}
+/* The text, which the giant checkbox had crushed to a sliver. */
+.picker-panel label > span {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.picker-panel label:has(input:checked) { color: var(--ink); font-weight: 600; }
+.picker-panel label:focus-within {
+  outline: 2px solid var(--focus, #2563eb); outline-offset: -2px;
+}
+/* Explains that more than one is allowed. A capability nobody notices is the
+   same as one that is not there. */
+.field-hint { font-size: 10.5px; color: var(--muted); line-height: 1.35; }
+/* Category names run long -- "للجميع / الخصومات / Saleable / Events" -- but the
+   width they need is in the OPEN PANEL, which floats and sizes itself, not in
+   the closed control. So this no longer spans two tracks: the field is one
+   column like every other, and the class remains only to mark which field owns
+   a picker. */
+.field-wide { grid-column: span 1; }
+
+/* -------------------------------------------------------- states & health */
+/* An error and an empty result are different things and must never look alike:
+   rendering zeros for a failed query is how a dashboard lies. */
+.state { padding: 28px 16px; text-align: center; color: var(--ink-2); font-size: 14px; }
+.state.error {
+  color: var(--critical); border: 1px solid var(--critical);
+  border-radius: var(--radius); background: color-mix(in oklab, var(--critical) 8%, transparent);
+  text-align: start; padding: 14px 16px;
+}
+.state.error strong { display: block; margin-bottom: 4px; }
+
+.health {
+  display: flex; gap: 16px; flex-wrap: wrap;
+  font-size: 12px; color: var(--muted);
+  padding: 8px 16px; margin-bottom: var(--gap);
+  border: 1px dashed var(--ring); border-radius: var(--radius);
+}
+.health b { color: var(--ink-2); font-weight: 600; }
+.health .warn { color: var(--serious); }
+
+/* ------------------------------------------------------------------ login */
+.login-wrap { display: grid; place-items: center; min-height: 80vh; padding: 20px; }
+.login { width: 100%; max-width: 340px; }
+.login .field { margin-bottom: 12px; }
+.login .field input { width: 100%; }
+.login .err { color: var(--critical); font-size: 13px; margin-top: 10px; }
+
+.hidden { display: none !important; }
+
+@media (max-width: 640px) {
+  main { padding: 12px; }
+  .tile .value { font-size: 25px; }
+}
+
+/* ------------------------------------------------------- products explorer */
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--ink); }
+tbody tr[data-id] { cursor: pointer; }
+#detail { scroll-margin-top: 70px; }
+#more { margin-top: 12px; }
+
+/* ----------------------------------------------------------------- legend */
+/* The status column is advice, not jargon — every value ships with its reason. */
+.legend {
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 12px; color: var(--ink-2);
+  padding: 12px 14px; margin-top: 14px;
+  border: 1px dashed var(--ring); border-radius: var(--radius);
+}
+.legend > span { display: flex; align-items: center; gap: 8px; }
+.legend .legend-title { color: var(--muted); font-size: 11.5px; display: block; }
+
+/* ===========================================================================
+   The four management pages: 80/20, agencies, debt, warehouses
+   ===========================================================================
+   Everything below uses the same tokens as the rest of the sheet. No new
+   colour is introduced — the palette above is the validated one and a chart
+   that invents a ninth hue is a chart nobody can compare to the others. */
+
+.tile.accent-2 { border-inline-start: 3px solid var(--s2); }
+.tile.accent-4 { border-inline-start: 3px solid var(--s4); }
+
+/* Two cards side by side on a wide screen, stacked on a phone. */
+.grid-2 {
+  display: grid; gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+/* --------------------------------------------------------- demo data banner
+   Deliberately loud and not dismissible. A generated number in front of
+   management that is not marked as generated is the worst failure this
+   dashboard could have, so it is impossible to miss and impossible to close. */
+.demo-banner {
+  display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline;
+  padding: 11px 14px; margin-bottom: var(--gap);
+  border: 2px solid var(--critical); border-radius: var(--radius);
+  background: color-mix(in oklab, var(--critical) 9%, var(--surface));
+  font-size: 12.5px; color: var(--ink-2);
+}
+.demo-banner strong { color: var(--critical); font-size: 13px; }
+
+/* Repeated on every tile, so a screenshot of one number still carries the
+   warning that the number is not real. */
+.tile.is-demo { position: relative; }
+.tile.is-demo::after {
+  content: 'DEMO';
+  position: absolute; inset-inline-end: 8px; top: 8px;
+  font-size: 9.5px; letter-spacing: .08em; font-weight: 700;
+  color: var(--critical); opacity: .75;
+}
+
+/* ------------------------------------------------------------------- charts */
+.chart svg { width: 100%; height: auto; display: block; }
+.ch-axis { fill: var(--muted); font-size: 11px; }
+.ch-callout {
+  margin: 10px 0 0; font-size: 13px; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.ch-legend {
+  display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center;
+  margin-top: 10px; font-size: 12px; color: var(--ink-2);
+}
+.ch-legend span { display: flex; align-items: center; gap: 6px; }
+.ch-legend .ch-axis-name { color: var(--muted); }
+.sw {
+  width: 12px; height: 3px; border-radius: 2px; display: inline-block;
+  background: var(--s1);
+}
+.sw.dash {
+  height: 0; border-top: 2px dashed var(--axis); background: none; width: 14px;
+}
+
+/* Vertical columns for a monthly series. */
+.cols {
+  display: flex; align-items: flex-end; gap: 6px;
+  height: 200px; padding-top: 18px;
+}
+.col {
+  flex: 1 1 0; min-width: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%;
+}
+.col-track { flex: 1; width: 100%; display: flex; align-items: flex-end; }
+.col-fill {
+  width: 100%; border-radius: 4px 4px 0 0; min-height: 2px;
+  background: var(--s1);
+}
+.col-val, .col-label {
+  font-size: 10.5px; color: var(--muted); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.col-val { color: var(--ink-2); }
+
+/* Ordered-severity bars — aging buckets. The colour ramp is a SECOND
+   encoding: every row carries its label, its amount and its share as text. */
+.sev { display: flex; flex-direction: column; gap: 10px; }
+.sev-row {
+  display: grid; gap: 10px; align-items: center;
+  grid-template-columns: minmax(110px, auto) minmax(0, auto) minmax(90px, 1fr) 38px;
+}
+.sev-label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.sev-value { font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sev-track {
+  height: 10px; background: var(--grid); border-radius: 5px; overflow: hidden;
+}
+.sev-fill { display: block; height: 100%; border-radius: 5px; min-width: 2px; }
+.sev-share {
+  font-size: 12px; color: var(--muted); text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cross-tab heat table. The tint tops out well below full strength so the
+   number inside every cell stays readable in both themes. */
+table.matrix th, table.matrix td { white-space: nowrap; }
+table.matrix .matrix-row-label {
+  position: sticky; inset-inline-start: 0; background: var(--surface);
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis;
+}
+table.matrix td.n { font-variant-numeric: tabular-nums; }
+
+
+/* ---------------------------------------------------------------------------
+   Disclosure (<details>) — used for long tables that would otherwise bury the
+   cards beneath them. Styled as a button because that is what it behaves like;
+   an unstyled <summary> reads as body text and nobody discovers it.
+   --------------------------------------------------------------------------- */
+details > summary {
+  cursor: pointer;
+  display: inline-block;
+  padding: .5rem .9rem;
+  border: 1px solid var(--line, #d0d5dd);
+  border-radius: .5rem;
+  font-weight: 600;
+  user-select: none;
+  list-style: none;
+}
+details > summary::-webkit-details-marker { display: none; }
+details > summary::after {
+  content: " ▾";
+  font-size: .85em;
+}
+details[open] > summary::after { content: " ▴"; }
+details > summary:hover { background: var(--hover, rgba(127,127,127,.08)); }
+details > summary:focus-visible {
+  outline: 2px solid var(--focus, #2563eb);
+  outline-offset: 2px;
+}
+details[open] > summary { margin-bottom: .75rem; }
+
+
+/* ---------------------------------------------------------------------------
+   Comparison panel — the customers page's two-period control.
+   Set apart from .filters on purpose: the filters narrow WHO is counted, this
+   decides WHAT is being compared and OVER WHICH periods. Nine identical boxes
+   in one row made the important control impossible to find.
+   --------------------------------------------------------------------------- */
+/* The period card leads the page: one place to choose time, months only.
+   Kept visually quiet -- it frames every number below it, so it should
+   read as the page's premise rather than compete with the tiles. */
+.period-card #period { margin-bottom: 10px; }
+.period-card { margin-bottom: 14px; }
+
+/* .presets and .warn-text were removed with the comparison controls they
+   styled: the three preset buttons that wrote a second date range, and the
+   caution that fired when the two ranges came out different lengths. One
+   month against the same month a year earlier cannot differ by more than a
+   leap day, so neither has anything left to style. */
