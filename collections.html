@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dabboos — Daily Collections</title>
+  <link rel="stylesheet" href="assets/css/style.css?v=82" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1729" />
+  <link rel="apple-touch-icon" href="assets/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💵</text></svg>" />
+</head>
+<body>
+  <header id="appHeader" class="app"></header>
+  <main class="wrap">
+    <div class="page-head">
+      <h1 id="pgTitle"></h1>
+      <p id="pgSub"></p>
+    </div>
+
+    <div class="filters" id="fbHost"></div>
+
+    <div id="kpis" class="kpi-grid"></div>
+
+    <div class="panel" data-src="dashboard_payments">
+      <div class="panel-head"><h2 id="perfTitle"></h2></div>
+      <div class="panel-body cap" style="padding:0"><div id="perfBox"></div></div>
+    </div>
+
+    <div class="panel" data-src="dashboard_payments">
+      <div class="panel-head"><h2 id="gridTitle"></h2></div>
+      <div class="panel-body"><div class="coll-wrap"><div id="gridBox"></div></div></div>
+    </div>
+
+    <div class="foot">Dabboos Sales Command Center · Odoo → n8n → Supabase</div>
+  </main>
+
+  <script src="assets/js/config.js?v=82"></script>
+  <script src="assets/js/auth.js?v=82"></script>
+  <script src="assets/js/common.js?v=82"></script>
+  <script>
+  (function () {
+    const D = window.DASH;
+    D.buildChrome("collections");
+    document.getElementById("pgTitle").textContent = D.t("coll_title");
+    document.getElementById("pgSub").textContent = D.t("coll_sub") + " — 🔍 " + D.t("chk_pay");
+    document.getElementById("perfTitle").textContent = D.t("coll_rep_perf");
+    document.getElementById("gridTitle").textContent = D.t("coll_grid");
+
+    const kpi = (cls, label, num, sub) =>
+      `<div class="kpi ${cls}"><div class="kpi-l">${label}</div><div class="kpi-n">${num}</div><div class="kpi-sub">${sub || "&nbsp;"}</div></div>`;
+    const dayLabel = d => d ? (d.slice(8, 10) + "/" + d.slice(5, 7)) : "";
+    const num = n => Number(n) || 0;
+    const inRange = (d, a, b) => d && d >= a && d <= b;
+
+    // Baghdad calendar anchors
+    const bag = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Baghdad" }));
+    const pad = n => String(n).padStart(2, "0");
+    const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+    const today = ymd(bag);
+    const thisMonth = today.slice(0, 7);
+    const monthStart = thisMonth + "-01";
+    const lmDate = new Date(bag.getFullYear(), bag.getMonth() - 1, 1);
+    const lastMonth = ymd(lmDate).slice(0, 7);
+    const lastMonthStart = lastMonth + "-01";
+    const d14 = ymd(new Date(bag.getTime() - 13 * 864e5));
+
+    let payments = [], orders = [], grid = null;
+    let loadedFrom = null, loadedTo = null;
+
+    const fb = D.filterBar(document.getElementById("fbHost"), { date: true, rep: true, customer: true }, onFilterChange);
+    document.getElementById("fbFrom").value = monthStart;
+    document.getElementById("fbTo").value = today;
+
+    async function onFilterChange() {
+      const v = fb.values();
+      const from = v.from || monthStart, to = v.to || today;
+      // window must cover both the chosen range and the fixed (last-month..today) metrics
+      const wFrom = from < lastMonthStart ? from : lastMonthStart;
+      const wTo = to > today ? to : today;
+      if (wFrom !== loadedFrom || wTo !== loadedTo) await loadWindow(wFrom, wTo);
+      render();
+    }
+
+    let masterReps = [];
+    async function loadWindow(from, to) {
+      try {
+        [payments, orders, masterReps] = await Promise.all([
+          D.loadPayments({ from, to }),
+          D.loadOrders({ from, to, dateField: "date_order", select: "order_id,salesperson,user_id,state,amount_total,create_date,date_order,partner_name" }),
+          D.loadSalespeopleMaster()
+        ]);
+        loadedFrom = from; loadedTo = to;
+        D.setUpdated(new Date().toISOString());
+      } catch (e) { payments = []; orders = []; document.getElementById("kpis").innerHTML = `<div class="err">${D.t("error_load")}</div>`; }
+    }
+
+    const isConf = o => o.state === "sale" || o.state === "done";
+    const repKey = r => String(r.user_id != null ? r.user_id : (r.salesperson || "—"));
+    // name → user id (payments and orders can spell the same rep differently)
+    const repUid = name => {
+      const hit = masterReps.find(r => r.name === name) ||
+        payments.find(p => p.salesperson === name && p.user_id != null) ||
+        orders.find(o => o.salesperson === name && o.user_id != null);
+      return hit ? (hit.user_id != null ? hit.user_id : null) : null;
+    };
+
+    function render() {
+      const v = fb.values();
+      const from = v.from || monthStart, to = v.to || today;
+      // rep + customer narrowing — rep matches by user_id first so the same
+      // rep is caught in BOTH payments and orders whatever the spelling
+      const uid = v.rep ? repUid(v.rep) : null;
+      const repOk = r => !v.rep || r.salesperson === v.rep || (uid != null && r.user_id === uid);
+      const pays = payments.filter(p => repOk(p) && fb.match(p, { cust: "partner_name" }));
+      const ords = orders.filter(o => isConf(o) && repOk(o) && fb.match(o, { cust: "partner_name" }));
+      fb.setCount(pays.length);
+
+      // ---- KPI cards ----
+      const sumP = arr => arr.reduce((s, p) => s + num(p.amount), 0);
+      const todayTot = sumP(pays.filter(p => String(p.date).slice(0, 10) === today));
+      const tot14 = sumP(pays.filter(p => inRange(String(p.date).slice(0, 10), d14, today)));
+      const periodTot = sumP(pays.filter(p => inRange(String(p.date).slice(0, 10), from, to)));
+      const periodSales = ords.filter(o => inRange(String(o.date_order || o.create_date).slice(0, 10), from, to)).reduce((s, o) => s + num(o.amount_total), 0);
+      const vsSales = periodSales > 0 ? Math.round(periodTot / periodSales * 100) : null;
+      document.getElementById("kpis").innerHTML =
+        kpi("k-grn", D.t("coll_today"), D.fmtMoney(todayTot), today) +
+        kpi("k-vio", D.t("coll_14d"), D.fmtMoney(tot14), `${d14} → ${today}`) +
+        kpi("", D.t("coll_period"), D.fmtMoney(periodTot), `${from} → ${to}`) +
+        kpi("k-amb", D.t("coll_vs_sales"), vsSales != null ? vsSales + "%" : "—", `${D.fmtMoney(periodTot)} ÷ ${D.fmtMoney(periodSales)}`);
+
+      // ---- rep performance (month-anchored: today / MTD / last month / MoM / vs sales) ----
+      const reps = {};
+      const ensure = (k, name, uid) => (reps[k] = reps[k] || { salesperson: name, user_id: uid, today: 0, mtd: 0, last: 0, salesMtd: 0 });
+      pays.forEach(p => {
+        const k = repKey(p); const r = ensure(k, p.salesperson || "—", p.user_id); const d = String(p.date).slice(0, 10);
+        if (d === today) r.today += num(p.amount);
+        if (d.slice(0, 7) === thisMonth) r.mtd += num(p.amount);
+        if (d.slice(0, 7) === lastMonth) r.last += num(p.amount);
+      });
+      ords.forEach(o => { const d = String(o.date_order || o.create_date).slice(0, 10); if (d.slice(0, 7) === thisMonth) { const k = repKey(o); const r = ensure(k, o.salesperson || "—", o.user_id); r.salesMtd += num(o.amount_total); } });
+      const repList = Object.values(reps).map(r => ({
+        ...r,
+        mom: r.last > 0 ? Math.round((r.mtd - r.last) / r.last * 100) : (r.mtd > 0 ? 100 : 0),
+        vs: r.salesMtd > 0 ? Math.round(r.mtd / r.salesMtd * 100) : null
+      })).filter(r => r.mtd > 0 || r.last > 0 || r.today > 0).sort((a, b) => b.mtd - a.mtd);
+
+      const momCell = m => `<span class="${m > 0 ? "ok" : (m < 0 ? "danger" : "muted")}">${m > 0 ? "▲" : (m < 0 ? "▼" : "—")} ${Math.abs(m)}%</span>`;
+      document.getElementById("perfBox").innerHTML = repList.length ? `
+        <table class="dt">
+          <thead><tr>
+            <th>${D.t("col_rep")}</th><th>${D.t("coll_today")}</th><th>${D.t("coll_mtd")}</th>
+            <th>${D.t("coll_last_month")}</th><th>${D.t("coll_mom")}</th>
+            <th>${D.t("coll_sales_month")}</th><th>${D.t("coll_vs_sales")}</th>
+          </tr></thead>
+          <tbody>
+          ${repList.map(r => `<tr>
+            <td class="strong">${D.esc(r.salesperson)}</td>
+            <td class="amt">${D.fmtMoney(r.today)}</td>
+            <td class="amt"><b>${D.fmtMoney(r.mtd)}</b></td>
+            <td class="amt muted">${D.fmtMoney(r.last)}</td>
+            <td>${momCell(r.mom)}</td>
+            <td class="amt muted">${D.fmtMoney(r.salesMtd)}</td>
+            <td>${r.vs != null ? r.vs + "%" : "—"}</td>
+          </tr>`).join("")}
+          </tbody>
+        </table>` : `<div class="empty">${D.t("no_data")}</div>`;
+
+      renderGrid();
+    }
+
+    // 14-day per-rep grid from the rep_collections snapshot (respects rep filter)
+    function renderGrid() {
+      const box = document.getElementById("gridBox");
+      if (!grid || !grid.reps) { box.innerHTML = `<div class="empty">${D.t("no_data")}</div>`; return; }
+      const v = fb.values();
+      const days = grid.days || [];
+      // uid-aware rep match (snapshot spellings can differ from the dropdown)
+      const guid = v.rep ? repUid(v.rep) : null;
+      const reps = grid.reps.filter(r => !v.rep || r.salesperson === v.rep || (guid != null && r.user_id === guid));
+      if (!reps.length) { box.innerHTML = `<div class="empty">${D.t("no_data")}</div>`; return; }
+      // footer: global totals normally; the FILTERED reps' totals when a rep
+      // is selected (a global footer under one rep's row misled readers)
+      const tbdAll = grid.totals_by_day || {};
+      const tbd = d => v.rep
+        ? reps.reduce((s, r) => s + ((((r.daily || {})[d]) || {}).total || 0), 0)
+        : ((tbdAll[d] && tbdAll[d].total) || 0);
+      const grand = v.rep ? reps.reduce((s, r) => s + (r.total || 0), 0) : grid.grand_total;
+      box.innerHTML = `
+        <table class="dt coll-grid">
+          <thead><tr>
+            <th>${D.t("col_rep")}</th>
+            ${days.map(d => `<th class="day${d === grid.today ? " today" : ""}">${dayLabel(d)}</th>`).join("")}
+            <th>${D.t("coll_total")}</th>
+          </tr></thead>
+          <tbody>
+          ${reps.map(r => `<tr>
+            <td class="strong">${D.esc(r.salesperson)}</td>
+            ${days.map(d => { const c = (r.daily && r.daily[d]) || { total: 0, pending: 0 }; return `<td class="cell${d === grid.today ? " today" : ""}">${c.total ? D.fmtMoney(c.total) : "—"}${c.pending ? `<div class="c-pend">${D.fmtMoney(c.pending)} ${D.t("coll_pending")}</div>` : ""}</td>`; }).join("")}
+            <td class="cell strong">${D.fmtMoney(r.total)}</td>
+          </tr>`).join("")}
+          </tbody>
+          <tfoot><tr>
+            <td>${D.t("coll_grand_total")}</td>
+            ${days.map(d => `<td class="cell${d === grid.today ? " today" : ""}">${tbd(d) ? D.fmtMoney(tbd(d)) : "—"}</td>`).join("")}
+            <td class="cell">${D.fmtMoney(grand)}</td>
+          </tr></tfoot>
+        </table>`;
+    }
+
+    async function init() {
+      try { grid = await D.api("rep_collections"); } catch (e) { grid = null; }
+      await loadWindow(lastMonthStart, today);
+      // populate rep dropdown from loaded payments
+      fb.setReps([...masterReps.map(r => r.name),
+        ...payments.map(p => p.salesperson), ...orders.map(o => o.salesperson)]);
+      render();
+    }
+    init();
+    setInterval(async () => { try { grid = await D.api("rep_collections"); } catch (e) {} await loadWindow(loadedFrom || lastMonthStart, loadedTo || today); render(); }, D.cfg.POLL_MS);
+  })();
+  </script>
+</body>
+</html>

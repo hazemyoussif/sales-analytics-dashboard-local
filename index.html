@@ -1,61 +1,819 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>لوحة المنتجات — دبوس</title>
-<link rel="stylesheet" href="assets/css/style.css?v=36">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dabboos — Sales Command Center</title>
+  <link rel="stylesheet" href="assets/css/style.css?v=82" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1729" />
+  <link rel="apple-touch-icon" href="assets/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>" />
 </head>
 <body>
-  <div id="shell" class="hidden"></div>
-  <noscript><main><div class="state error">This dashboard needs JavaScript enabled.</div></main></noscript>
-  <main id="app" class="hidden">
-    <div id="boot" class="state">Loading…</div>
-    <div id="health"></div>
-    <div id="filters" class="filters"></div>
-    <div id="tiles" class="tiles"></div>
-    <div id="adjustments"></div>
-
-    <div class="card">
-      <h2 data-t="neverSoldTitle">Never sold</h2>
-      <p class="sub" data-t="neverSoldSub">In the catalogue but on no invoice</p>
-      <div id="never-sold"></div>
+  <header id="appHeader" class="app"></header>
+  <main class="wrap">
+    <div class="page-head">
+      <h1 id="pgTitle"></h1>
+      <p id="pgSub"></p>
     </div>
 
-    <div class="card">
-      <h2 id="h-top" data-t="pg.topProducts">Top products</h2>
-      <p class="sub" data-t="pg.topProductsSub">By untaxed revenue, net of returns</p>
-      <div id="top-products"></div>
+    <div class="filters" id="fbHost"></div>
+
+    <!-- Row 1 — TODAY: how is the day going? (always anchored to today) -->
+    <h2 class="sect-h" id="secToday"></h2>
+    <div id="todayKpis" class="kpi-grid"></div>
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="panel" data-src="dashboard_invoices">
+        <div class="panel-head"><h2 id="invTodayTitle"></h2></div>
+        <div class="panel-body cap" style="padding:0"><div id="invTodayBox"></div></div>
+      </div>
+      <div class="panel" data-src="dashboard_payments">
+        <div class="panel-head"><h2 id="payTodayTitle"></h2></div>
+        <div class="panel-body cap" style="padding:0"><div id="payTodayBox"></div></div>
+      </div>
     </div>
 
-    <div class="card">
-      <h2 data-t="pg.categories">Categories</h2>
-      <p class="sub" data-t="pg.categoriesSub">Revenue share by product category</p>
-      <div id="by-category"></div>
+    <!-- Row 2 — THE MONTH: invoiced vs target · cash collected -->
+    <h2 class="sect-h" id="secMonth"></h2>
+    <section class="exec">
+      <div class="exec-heads" id="execHeads"></div>
+      <div class="exec-mini" id="execMini"></div>
+    </section>
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="panel" data-src="dashboard_invoices">
+        <div class="panel-head"><h2 id="invMonthRepTitle"></h2></div>
+        <div class="panel-body cap" style="padding:0"><div id="invMonthRepBox"></div></div>
+      </div>
+      <div class="panel" data-src="dashboard_payments">
+        <div class="panel-head"><h2 id="payMonthRepTitle"></h2></div>
+        <div class="panel-body cap" style="padding:0"><div id="payMonthRepBox"></div></div>
+      </div>
     </div>
 
-    <div class="card">
-      <h2 data-t="pg.products">Products</h2>
-      <p class="sub" data-t="pg.productsSub">Top 60 by revenue</p>
-      <div id="table"></div>
+    <!-- Row 3 — NAMES: who to call, who is performing -->
+    <h2 class="sect-h" id="secNames"></h2>
+    <div class="panel" data-src="dashboard_invoices">
+      <div class="panel-head"><h2 id="debtorsTitle"></h2></div>
+      <div class="panel-body" style="padding:0"><div id="debtorsBox"></div></div>
     </div>
+
+    <!-- Row 4 — RHYTHM: daily pulse + weekly trajectory -->
+    <h2 class="sect-h" id="secRhythm"></h2>
+    <div class="panel" style="margin-bottom:16px" data-src="dashboard_orders">
+      <div class="panel-head"><h2 id="ordDayTitle"></h2></div>
+      <div class="panel-body cap" style="padding:0"><div id="ordDayBox"></div></div>
+    </div>
+    <div class="grid-2">
+      <div class="panel" data-src="dashboard_orders">
+        <div class="panel-head"><h2 id="dayTitle"></h2></div>
+        <div class="panel-body"><div class="chart-box"><canvas id="dayChart"></canvas></div></div>
+      </div>
+      <div class="panel" data-src="dashboard_orders">
+        <div class="panel-head"><h2 id="weekTitle"></h2></div>
+        <div class="panel-body"><div class="chart-box"><canvas id="weekChart"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- Row 5 — WHO: customer dependency -->
+    <h2 class="sect-h" id="secWho"></h2>
+    <div class="panel" data-src="dashboard_orders">
+      <div class="panel-head"><h2 id="custTitle"></h2></div>
+      <div class="panel-body"><div class="chart-box"><canvas id="custChart"></canvas></div></div>
+    </div>
+
+    <div class="foot">Dabboos Sales Command Center · Odoo → n8n → Supabase</div>
   </main>
 
-  <!-- Last-resort visibility: if the module fails to parse or a dependency 404s,
-       nothing else runs and the page would otherwise stay a blank background. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="assets/js/config.js?v=82"></script>
+  <script src="assets/js/auth.js?v=82"></script>
+  <script src="assets/js/common.js?v=82"></script>
   <script>
-    window.addEventListener('error', e => {
-      const app = document.getElementById('app');
-      if (!app) return;
-      app.classList.remove('hidden');
-      const boot = document.getElementById('boot');
-      const msg = (e.message || 'Script failed to load') +
-                  (e.filename ? ' — ' + e.filename.split('/').pop() : '');
-      if (boot) { boot.className = 'state error'; boot.textContent = msg; }
-    }, true);
+  (function () {
+    const D = window.DASH, A = window.DASH_AUTH;
+    D.buildChrome("overview");
+    // Personal greeting on the Overview: "Welcome, <name>". Uses the logged-in
+    // profile (full_name preferred, else username). textContent escapes it.
+    const _prof = (A && A.profile) ? A.profile() : null;
+    const _who = _prof ? (_prof.full_name || _prof.username || "") : "";
+    document.getElementById("pgTitle").textContent =
+      _who ? (D.t("ov_welcome") + " " + _who) : D.t("brand");
+    document.getElementById("pgSub").textContent = D.t("ov_sub");
+    document.getElementById("dayTitle").textContent = D.t("ov_orders_day");
+    document.getElementById("weekTitle").textContent = D.t("wk_rev_title");
+    document.getElementById("custTitle").textContent = D.t("top_customers");
+    document.getElementById("debtorsTitle").textContent = D.t("ov_top_debtors");
+    document.getElementById("payTodayTitle").textContent = D.t("pay_today_tbl");
+    document.getElementById("payMonthRepTitle").textContent = D.t("pay_by_rep_month");
+    document.getElementById("secToday").textContent = D.t("sec_today");
+    document.getElementById("secMonth").textContent = D.t("sec_month");
+    document.getElementById("secNames").textContent = D.t("sec_names");
+    document.getElementById("secRhythm").textContent = D.t("sec_rhythm");
+    document.getElementById("secWho").textContent = D.t("sec_who");
+    document.getElementById("invTodayTitle").textContent = D.t("inv_today_tbl");
+    document.getElementById("invMonthRepTitle").textContent = D.t("inv_by_rep_month");
+    document.getElementById("ordDayTitle").textContent = D.t("ord_by_day");
+
+    // the invoice/payment cards are tall — let the user collapse them.
+    // Click the panel head to toggle; the choice persists per panel.
+    // The month pair starts collapsed on first visit (page length).
+    function collapsible(titleId, defaultCollapsed) {
+      const h2 = document.getElementById(titleId); if (!h2) return;
+      const head = h2.closest(".panel-head");
+      const body = head.parentElement.querySelector(".panel-body");
+      if (!head || !body) return;
+      const arrow = document.createElement("span");
+      arrow.style.cssText = "margin-inline-start:8px;font-size:11px;opacity:.55";
+      head.appendChild(arrow);
+      head.style.cursor = "pointer";
+      const KEY = "clps_" + titleId;
+      const set = c => { body.style.display = c ? "none" : ""; arrow.textContent = c ? "▸" : "▾"; localStorage.setItem(KEY, c ? "1" : "0"); };
+      const stored = localStorage.getItem(KEY);
+      set(stored == null ? !!defaultCollapsed : stored === "1");
+      head.addEventListener("click", () => set(body.style.display !== "none"));
+    }
+    ["invTodayTitle", "payTodayTitle", "ordDayTitle"].forEach(id => collapsible(id, false));
+    ["invMonthRepTitle", "payMonthRepTitle"].forEach(id => collapsible(id, true));
+
+    const isConf = o => o.state === "sale" || o.state === "done";
+    const val = o => Number(o.amount_total) || 0;
+    const num = n => Number(n) || 0;
+    // Baghdad calendar day (same as Odoo's on-screen grouping) — NOT the raw
+    // UTC slice, or evening orders land on the wrong day vs what Odoo shows.
+    const dayOf = o => D.bagDay(o.date_order || o.create_date);
+    const inMonth = (o, ym) => dayOf(o).slice(0, 7) === ym;
+    const TARGETS = (D.cfg.TARGETS || {});
+    const TARGET = num(TARGETS.MONTHLY_REVENUE_TARGET);
+
+    let dayChart = null, custChart = null, weekChart = null;
+    let allRows = [], payments = [], debtRows = [], alerts = [], collSnap = null, invToday = null, invMonth = null;
+    let masterReps = [];
+    let loadedFrom = null, loadedTo = null;
+
+    // resolve a rep name (any spelling source) to their Odoo user id, so
+    // filtering matches across orders/invoices/payments even when the same
+    // rep is spelled differently in each table
+    function repUid(name) {
+      const hit = masterReps.find(r => r.name === name) ||
+        allRows.find(o => o.salesperson === name && o.user_id != null) ||
+        payments.find(p => p.salesperson === name && p.user_id != null);
+      return hit ? (hit.user_id != null ? hit.user_id : null) : null;
+    }
+
+    // Baghdad calendar anchors
+    const bag = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Baghdad" }));
+    const pad = n => String(n).padStart(2, "0");
+    const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+    const today = ymd(bag);
+    const thisMonth = today.slice(0, 7);
+    const monthStart = thisMonth + "-01";
+    const lastMonth = ymd(new Date(bag.getFullYear(), bag.getMonth() - 1, 1)).slice(0, 7);
+    const lastMonthStart = lastMonth + "-01";
+    const daysInMonth = new Date(bag.getFullYear(), bag.getMonth() + 1, 0).getDate();
+    const dayOfMonth = bag.getDate();
+
+    const fb = D.filterBar(document.getElementById("fbHost"), { date: true, rep: true, customer: true }, onFilterChange);
+    document.getElementById("fbFrom").value = monthStart;
+    document.getElementById("fbTo").value = today;
+
+    async function onFilterChange() {
+      const v = fb.values();
+      const from = v.from || monthStart, to = v.to || today;
+      // window must cover the chosen range AND last-month..today (for MoM + the month-anchored band)
+      const wFrom = [from, lastMonthStart].sort()[0];
+      const wTo = to > today ? to : today;
+      if (wFrom !== loadedFrom || wTo !== loadedTo) await loadWindow(wFrom, wTo);
+      safeRender();
+    }
+
+    async function loadWindow(from, to) {
+      try {
+        // fetch one extra UTC day at the start: a Baghdad day begins at 21:00
+        // UTC the previous evening, and dayOf() buckets by Baghdad day
+        const prevDay = s => { const d = new Date(s + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+        [allRows, payments] = await Promise.all([
+          D.loadOrders({ from: prevDay(from), to, dateField: "date_order",
+            select: "order_id,order_name,partner_name,salesperson,user_id,city,state,amount_total,create_date,date_order,dashboard_customers(governorate,city)" }),
+          D.loadPayments({ from, to, all: true }) // all states: the status cards show rejected/cancelled rows (never as cash)
+        ]);
+        loadedFrom = from; loadedTo = to;
+        // keep the master list in the dropdown — a window reload must not
+        // shrink it back to only the reps seen in the loaded orders
+        fb.setReps([...masterReps.map(r => r.name), ...allRows.map(o => o.salesperson),
+          ...payments.map(p => p.salesperson)]);
+        D.setUpdated(new Date().toISOString());
+      } catch (e) { allRows = []; payments = []; document.getElementById("execHeads").innerHTML = `<div class="err">${D.t("error_load")}</div>`; }
+    }
+
+    async function loadSnapshots() {
+      // live overdue (rep_debt) + value-at-risk (alerts) + uninvoiced (collections) — not date-windowed
+      try {
+        const snap = await D.api("rep_debt");
+        debtRows = [];
+        (snap.reps || []).forEach(r => (r.customers || []).forEach(c =>
+          debtRows.push({ name: c.name, city: c.city, receivable: num(c.receivable), overdue: num(c.overdue),
+            salesperson: r.salesperson, user_id: r.user_id != null ? r.user_id : null })));
+      } catch (e) { debtRows = []; }
+      try { const a = await D.api("alerts"); alerts = a.alerts || []; } catch (e) { alerts = []; }
+      try { collSnap = await D.api("collections"); } catch (e) { collSnap = null; }
+      try { invToday = await D.api("invoices_today"); } catch (e) { invToday = null; }
+      try { invMonth = await D.api("invoices_month"); } catch (e) { invMonth = null; }
+      // the salespeople MASTER (synced from Odoo) — so the dropdown holds
+      // ALL reps, not only the ones with activity in the loaded window
+      masterReps = await D.loadSalespeopleMaster();
+      // rep dropdown: master + every spelling seen in orders/invoices/payments
+      fb.setReps([
+        ...masterReps.map(r => r.name),
+        ...allRows.map(o => o.salesperson),
+        ...payments.map(p => p.salesperson),
+        ...(((invToday && invToday.by_rep) || []).map(r => r.salesperson))
+      ]);
+    }
+
+    // `src` tags a tile with the raw table it comes from, so an admin who
+    // hides that source (D.applyHidden) removes just this tile.
+    const kpi = (cls, label, n, sub, src) =>
+      `<div class="kpi ${cls}"${src ? ` data-src="${src}"` : ""}><div class="kpi-l">${label}</div><div class="kpi-n">${n}</div><div class="kpi-sub">${sub || "&nbsp;"}</div></div>`;
+    const card = (lbl, n, extra, src) =>
+      `<div class="exec-card"${src ? ` data-src="${src}"` : ""}><div class="ex-l">${lbl}</div><div class="exec-row"><div class="exec-n">${n}</div>${extra || ""}</div>`;
+    const mini = (lbl, v, d, src) =>
+      `<div class="ex-mini"${src ? ` data-src="${src}"` : ""}><div class="ex-l">${lbl}</div><div class="ex-v">${v}</div><div class="ex-d">${d || "&nbsp;"}</div></div>`;
+    const deltaTag = pct => `<span class="exec-delta ${pct >= 0 ? "up" : "down"}">${pct >= 0 ? "▲" : "▼"} ${Math.abs(pct)}%</span>`;
+    const pctOf = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : (a > 0 ? 100 : 0);
+
+    function render() {
+      const v = fb.values();
+      const from = v.from || monthStart, to = v.to || today;
+      // rep + customer narrowing applies to everything ("search changes all data")
+      const matchRC = o => fb.match(o, { rep: "salesperson", cust: "partner_name" });
+
+      // ----- filter-range slice (drives the minis + charts) -----
+      const rangeRows = allRows.filter(o => { const d = dayOf(o); return d >= from && d <= to && matchRC(o); });
+      const rConf = rangeRows.filter(isConf);
+      const rCancel = rangeRows.filter(o => o.state === "cancel");
+      const rConfVal = rConf.reduce((s, o) => s + val(o), 0);
+      const rCancelVal = rCancel.reduce((s, o) => s + val(o), 0);
+      const customers = new Set(rConf.map(o => o.partner_name).filter(Boolean)).size;
+      fb.setCount(rangeRows.length);
+
+      // ----- month-anchored slice (drives the hero band) -----
+      const confAll = allRows.filter(o => isConf(o) && matchRC(o));
+      // The month card is INVOICE-based (accounting revenue, by owner
+      // request): posted customer invoices dated this month. MoM compares
+      // vs the SAME number of days of last month, and only shows when last
+      // month's invoices actually exist in the table (needs the v5.5
+      // "BACKFILL Months" run once).
+      // rep/customer filter narrows the month revenue card too (recomputed
+      // from invoice-level rows); MoM + target only make sense unfiltered
+      const repCustActive = !!(v.rep || v.cust);
+      const invMRowsF = (invMonth && invMonth.posted_rows && repCustActive)
+        ? filterInvRows(invMonth.posted_rows) : null;
+      const revMonth = invMonth
+        ? (invMRowsF ? invMRowsF.reduce((s, r) => s + r.value, 0) : num(invMonth.value)) : null;
+      const momRev = invMonth ? pctOf(num(invMonth.value), num(invMonth.last_mtd)) : 0;
+      const momValid = !!(invMonth && !repCustActive && invMonth.last_month_has_data && num(invMonth.last_mtd) > 0);
+      const attain = (TARGET > 0 && revMonth != null) ? Math.round(revMonth / TARGET * 100) : null;
+      const pace = (revMonth != null && dayOfMonth > 0) ? Math.round(revMonth / dayOfMonth * daysInMonth) : revMonth;
+      const paceVs = (TARGET > 0 && pace != null) ? Math.round(pace / TARGET * 100) : null;
+
+      // uid-aware rep matching: the dropdown may hold a different spelling
+      // of the same rep than the payments rows carry
+      const vRepUid = v.rep ? repUid(v.rep) : null;
+      const paysAll = payments.filter(p =>
+        (!v.rep || p.salesperson === v.rep || (vRepUid != null && p.user_id === vRepUid)) &&
+        (!v.cust || String(p.partner_name || "").toLowerCase().includes(v.cust)));
+      // MONEY basis: cancelled and REJECTED (bounced) payments are rows,
+      // not cash — every sum below uses paysRC; the status cards show
+      // the excluded states as their own rows, Odoo-style.
+      const isCash = p => p.state !== "canceled" && p.state !== "rejected";
+      const paysRC = paysAll.filter(isCash);
+      // cash card: sub-line = payment count + full status split
+      const monthAll = paysAll.filter(p => String(p.date).slice(0, 7) === thisMonth);
+      const monthPays = monthAll.filter(isCash);
+      const cashMonth = monthPays.reduce((s, p) => s + num(p.amount), 0);
+      const sumSt = (a, st) => a.filter(p => p.state === st).reduce((s, p) => s + num(p.amount), 0);
+      const mPaid = sumSt(monthAll, "paid"), mTransit = sumSt(monthAll, "in_process");
+      const mRej = sumSt(monthAll, "rejected"), mCanc = sumSt(monthAll, "canceled");
+      const cntSt = st => monthAll.filter(p => p.state === st).length;
+      const mPaidN = cntSt("paid"), mTransitN = cntSt("in_process"),
+            mRejN = cntSt("rejected"), mCancN = cntSt("canceled");
+
+      // ----- TODAY strip (always today, respects rep/customer filter) -----
+      const salesTodayRows = confAll.filter(o => dayOf(o) === today);
+      const salesToday = salesTodayRows.reduce((s, o) => s + val(o), 0);
+      const cashTodayRows = paysRC.filter(p => String(p.date).slice(0, 10) === today);
+      const cashToday = cashTodayRows.reduce((s, p) => s + num(p.amount), 0);
+      // benchmark: average of the last 4 same weekdays (the loaded window
+      // always covers today-28 because it starts at last month's 1st)
+      const sumOn = (rows, d, getD, getV) => rows.filter(r => getD(r) === d).reduce((s, r) => s + getV(r), 0);
+      const typAvg = (rows, getD, getV) => {
+        let s = 0;
+        for (let k = 1; k <= 4; k++) s += sumOn(rows, D.addDays(today, -7 * k), getD, getV);
+        return s / 4;
+      };
+      const typicalTag = (val_, avg) => {
+        if (!(avg > 0)) return "";
+        const p = Math.round((val_ - avg) / avg * 100);
+        return `<span class="${p >= 0 ? "ok" : "danger"}">${p >= 0 ? "▲" : "▼"} ${Math.abs(p)}%</span> ${D.t("ov_vs_typical")}`;
+      };
+      const typCash = typAvg(paysRC, p => String(p.date).slice(0, 10), p => num(p.amount));
+
+      const cancelledToday = allRows.filter(o => o.state === "cancel" && dayOf(o) === today && matchRC(o)).length;
+      const draftToday = allRows.filter(o => (o.state === "draft" || o.state === "sent") && dayOf(o) === today && matchRC(o)).length;
+      // the big number = EVERY order record of today, the same total Odoo's
+      // grouped Orders list shows; the sub line explains its composition
+      const totalToday = salesTodayRows.length + cancelledToday + draftToday;
+
+      // First KPI = INVOICED today (accounting basis: posted customer
+      // invoices dated today, per owner request) — labeled so it is never
+      // confused with the order-based figures next to it.
+      const invS = invToday ? invStats() : null; // filtered like everything else
+      const invPosted = invS && invS.posted;
+      const collectedPct = invPosted && invPosted.value > 0
+        ? Math.round(invS.collected / invPosted.value * 100) : null;
+      document.getElementById("todayKpis").innerHTML =
+        kpi("", D.t("inv_today"), invPosted ? D.fmtMoney(invPosted.value) : "—",
+          invPosted
+            ? `${D.fmtNum(invPosted.n)} ${D.t("invoices_w")}${collectedPct != null ? ` · <span class="ok">${collectedPct}% ${D.t("collected_same_day")}</span>` : ""}`
+            : D.t("loading"), "dashboard_invoices") +
+        kpi("k-grn", D.t("coll_today"), D.fmtMoney(cashToday),
+          typicalTag(cashToday, typCash) || `${D.fmtNum(cashTodayRows.length)} ${D.t("payments_count")} · ${today}`, "dashboard_payments") +
+        kpi("k-vio", D.t("ov_today_orders"), D.fmtNum(totalToday),
+          `<span class="ok">✓ ${D.fmtNum(salesTodayRows.length)} ${D.t("ov_confirmed_short")}</span>` +
+          ` · ${D.fmtNum(draftToday)} ${D.t("ov_quotes")}` +
+          ` · <span class="${cancelledToday ? "danger" : "muted"}">${D.fmtNum(cancelledToday)} ${D.t("ov_not_confirmed")}</span>`, "dashboard_orders");
+
+      sect("invoices-today", () => renderInvToday(salesToday));
+      sect("invoices-month-reps", renderInvMonthReps);
+
+      // ----- top debtors list (respect rep + customer filter, uid-aware) -----
+      const debtRC = debtRows.filter(r =>
+        (!v.rep || r.salesperson === v.rep || (vRepUid != null && r.user_id === vRepUid)) &&
+        (!v.cust || String(r.name || "").toLowerCase().includes(v.cust)));
+      const byOver = [...debtRC].sort((a, b) => b.overdue - a.overdue);
+
+      // ----- hero cards -----
+      const barCls = paceVs == null ? "" : (paceVs >= 100 ? "" : (paceVs >= 80 ? "warn" : "bad"));
+      const momNote = momValid ? ` <span style="opacity:.65">· ${D.t("ex_vs_lmtd")}</span>` : "";
+      const targetBlock = (TARGET > 0 && !repCustActive)
+        ? `<div class="ex-bar ${barCls}"><i style="width:${Math.min(attain, 100)}%"></i></div>
+           <div class="ex-sub"><b>${attain}%</b> ${D.t("ex_of_target")} (${D.fmtMoney(TARGET)}) · ${D.t("ex_pace")} <b>${D.fmtMoney(pace)}</b> (${paceVs}%)${momNote}</div>`
+        : `<div class="ex-sub" style="margin-top:8px">${invMonth
+            ? `${D.fmtNum(invMRowsF ? invMRowsF.length : invMonth.count)} ${D.t("invoices_w")} · ${D.t("ex_rev_collected")}: <b>${D.fmtMoney(invMRowsF ? invMRowsF.reduce((s, r) => s + r.value - r.residual, 0) : num(invMonth.collected))}</b>`
+            : D.t("loading")}${momNote}</div>`;
+
+      document.getElementById("execHeads").innerHTML =
+        card(D.t("ex_revenue"), revMonth != null ? D.fmtMoney(revMonth) : "—", momValid ? deltaTag(momRev) : "", "dashboard_invoices") + targetBlock + `</div>` +
+        card(D.t("ex_cash"), D.fmtMoney(cashMonth), "", "dashboard_payments") +
+          `<div class="ex-sub" style="margin-top:9px">${D.fmtNum(monthPays.length)} ${D.t("payments_count")} · <span class="ok">✓ ${D.t("pay_paid")} (${D.fmtNum(mPaidN)}): <b>${D.fmtMoney(mPaid)}</b></span> · ${D.t("pay_transit")} (${D.fmtNum(mTransitN)}): <b>${D.fmtMoney(mTransit)}</b></div>` +
+          `<div class="ex-sub"><span class="danger">${D.t("pay_rejected")} (${D.fmtNum(mRejN)}): <b>${D.fmtMoney(mRej)}</b></span> · <span style="opacity:.7">${D.t("pay_cancelled")} (${D.fmtNum(mCancN)}): <b>${D.fmtMoney(mCanc)}</b></span> <span style="opacity:.6">(${D.t("pay_excluded_note")})</span></div>` +
+          `<div class="ex-sub"><span style="opacity:.75">${D.t("pay_cash_basis")}</span> · ${D.t("pay_grand_total")}: <b>${D.fmtMoney(cashMonth + mRej + mCanc)}</b></div></div>`;
+
+      // ----- minis (filter-range) -----
+      // "Top governorate" only considers REAL governorates — a missing city in
+      // Odoo must never be crowned the top region ("No city 23%" is noise).
+      // Same partner-data preference chain as the Regions page.
+      const govAgg = {}; let govTotal = 0;
+      rConf.forEach(o => {
+        const mc = o.dashboard_customers || {};
+        const realGov = mc.governorate ? String(mc.governorate).replace(/\s*\(.*?\)\s*$/, "").trim() : "";
+        const cityPick = (mc.city && String(mc.city).trim()) || o.city;
+        const k = D.govOf(realGov || cityPick).key;
+        govTotal += val(o);
+        if (k === "nocity" || k === "unknown") return;
+        const g = D.govLabel(k);
+        govAgg[g] = (govAgg[g] || 0) + val(o);
+      });
+      const topGov = Object.entries(govAgg).sort((a, b) => b[1] - a[1])[0];
+      const govShare = (topGov && govTotal > 0) ? Math.round(topGov[1] / govTotal * 100) : 0;
+
+      // concentration: how much of the period's revenue sits with 10 customers
+      const custVal = {};
+      rConf.forEach(o => { const n = o.partner_name || "—"; custVal[n] = (custVal[n] || 0) + val(o); });
+      const top10Val = Object.values(custVal).sort((a, b) => b - a).slice(0, 10).reduce((s, v) => s + v, 0);
+      const top10Share = rConfVal > 0 ? Math.round(top10Val / rConfVal * 100) : 0;
+      const cancelRate = (rConf.length + rCancel.length) > 0
+        ? Math.round(rCancel.length / (rConf.length + rCancel.length) * 100) : 0;
+
+      document.getElementById("execMini").innerHTML =
+        mini(D.t("ov_confirmed"), D.fmtNum(rConf.length), D.fmtMoney(rConfVal), "dashboard_orders") +
+        mini(D.t("ov_customers"), D.fmtNum(customers), `${from} → ${to}`, "dashboard_orders") +
+        mini(D.t("ov_cancelled"), D.fmtNum(rCancel.length),
+          rCancel.length ? `${D.t("cancel_rate")}: <b>${cancelRate}%</b> · ${D.fmtMoney(rCancelVal)}` : "&nbsp;", "dashboard_orders") +
+        mini(D.t("conc10"), `${top10Share}%`, D.t("of_period_rev"), "dashboard_orders") +
+        mini(D.t("ex_top_gov"), topGov ? topGov[0] : "—", topGov ? `${govShare}% ${D.t("share")}` : "&nbsp;", "dashboard_orders dashboard_customers");
+
+      // ----- action tables + charts -----
+      // each section individually guarded: one failure logs to the console
+      // and leaves only its own panel empty, never a blank page
+      sect("debtors", () => renderDebtors(byOver.slice(0, 10)));
+      sect("payments-today", () => renderPayToday(paysAll.filter(p => String(p.date).slice(0, 10) === today)));
+      sect("payments-month-reps", () => renderPayMonthReps(paysRC));
+      sect("orders-by-day", () => renderOrdersByDay(rangeRows));
+      sect("chart-days", () => drawByDay(rangeRows));
+      sect("chart-weeks", () => drawWeekly(confAll));
+      sect("chart-customers", () => drawTopCustomers(rConf));
+    }
+
+    const sect = (name, fn) => { try { fn(); } catch (e) { console.error("[overview] " + name + ":", e); } };
+    function safeRender() {
+      try { render(); } catch (e) { console.error("[overview] render failed:", e); }
+      // re-hide any tiles/cards whose source an admin switched off (dynamic
+      // content is rebuilt every poll, so this must run after each render)
+      if (D.applyHidden) D.applyHidden();
+    }
+
+    function renderDebtors(top) {
+      const box = document.getElementById("debtorsBox");
+      if (!top.length) { box.innerHTML = `<div class="empty">${D.t("no_data")}</div>`; return; }
+      // per-customer DSO comes from the collections snapshot (top overdue only)
+      const dsoMap = {};
+      ((collSnap && collSnap.overdue_customers) || []).forEach(c => { if (c.dso > 0) dsoMap[c.name] = Math.round(c.dso); });
+      // columns speak Odoo's Aged-Receivable vocabulary so viewers can map
+      // them 1:1: Overdue = the late columns · Not due yet = "At Date" ·
+      // Total open = the Total column. The footer names that exact screen.
+      box.innerHTML = `
+        <table class="dt">
+          <thead><tr><th>${D.t("col_customer")}</th><th>${D.t("col_rep")}</th><th>${D.t("col_overdue")}</th><th>${D.t("col_notdue")}</th><th>${D.t("col_total_open")}</th><th>${D.t("od_days")}</th></tr></thead>
+          <tbody>
+          ${top.map(r => {
+            const dso = dsoMap[r.name];
+            const notDue = r.receivable - r.overdue;
+            return `<tr>
+            <td class="strong">${D.esc(r.name)}</td>
+            <td class="muted">${D.esc(r.salesperson)}</td>
+            <td class="amt"><span class="danger">${D.fmtMoney(r.overdue)}</span></td>
+            <td class="amt muted">${notDue > 0 ? D.fmtMoney(notDue) : "0"}</td>
+            <td class="amt"><b>${D.fmtMoney(r.receivable)}</b></td>
+            <td class="amt">${dso != null ? `<span class="${dso > 60 ? "danger" : ""}">${D.fmtNum(dso)}</span>` : "—"}</td>
+          </tr>`; }).join("")}
+          </tbody>
+        </table>
+        <div class="muted" style="padding:9px 14px;font-size:11.5px">🔍 ${D.t("chk_aged")}</div>`;
+    }
+
+    /* ---- payments panels: the twin of the invoice cards, on the payment
+       basis (dashboard_payments; cancelled excluded at load). States:
+       paid = money in hand, in_process = with the courier (in transit).
+       Groups honor the rep/customer filter because the input rows (paysRC)
+       are already filtered. Names are DB strings → D.esc. ---- */
+    function payRepAgg(rows) {
+      const m = new Map();
+      rows.forEach(p => {
+        const k = p.user_id != null ? p.user_id : (p.salesperson || "—");
+        if (!m.has(k)) m.set(k, { salesperson: p.salesperson || "— غير محدد / Unassigned", n: 0, amount: 0, paid: 0, transit: 0 });
+        const e = m.get(k);
+        e.n++; e.amount += num(p.amount);
+        if (p.state === "in_process") e.transit += num(p.amount); else e.paid += num(p.amount);
+      });
+      return [...m.values()].sort((a, b) => b.amount - a.amount);
+    }
+    const payRepHead = () =>
+      `<thead><tr><th>${D.t("col_rep")}</th><th>${D.t("col_count")}</th><th>${D.t("col_amount")}</th><th>${D.t("pay_transit")}</th><th>${D.t("pay_paid")}</th></tr></thead>`;
+    const payRepRows = list => list.map(r => `<tr>
+        <td class="strong">${D.esc(r.salesperson)}</td>
+        <td class="amt">${D.fmtNum(r.n)}</td>
+        <td class="amt">${D.fmtMoney(r.amount)}</td>
+        <td class="amt">${r.transit > 0 ? `<span class="danger">${D.fmtMoney(r.transit)}</span>` : `<span class="muted">0</span>`}</td>
+        <td class="amt"><span class="ok">${D.fmtMoney(r.paid)}</span></td>
+      </tr>`).join("");
+
+    // today's payments: full Odoo-style status split (paid / in transit /
+    // rejected / cancelled — the same grouping as Odoo's payments screen)
+    // + per-rep table over the CASH rows only. Renders the skeleton even
+    // with ZERO rows — an empty card told the reader nothing.
+    function renderPayToday(rows) {
+      const box = document.getElementById("payTodayBox");
+      const sum = a => a.reduce((s, p) => s + num(p.amount), 0);
+      const by = st => rows.filter(p => p.state === st);
+      const cash = rows.filter(p => p.state === "paid" || p.state === "in_process");
+      const statusRow = (label, a) => `<tr>
+        <td class="strong">${label}</td>
+        <td class="amt">${D.fmtNum(a.length)}</td>
+        <td class="amt">${D.fmtMoney(sum(a))}</td>
+      </tr>`;
+      const repRows = payRepRows(payRepAgg(cash));
+      box.innerHTML = `
+        <table class="dt">
+          <thead><tr><th>${D.t("ack_status")}</th><th>${D.t("col_count")}</th><th>${D.t("col_amount")}</th></tr></thead>
+          <tbody>
+            ${statusRow("<b>" + D.t("pay_total") + "</b>", rows)}
+            ${statusRow(`<span class="ok">✓ ${D.t("pay_paid")}</span>`, by("paid"))}
+            ${statusRow(D.t("pay_transit"), by("in_process"))}
+            ${statusRow(`<span class="danger">${D.t("pay_rejected")}</span>`, by("rejected"))}
+            ${statusRow(`<span class="muted">${D.t("pay_cancelled")}</span>`, by("canceled"))}
+          </tbody>
+        </table>
+        <div class="muted" style="padding:9px 14px;font-size:12px">
+          <span class="ok">${D.fmtMoney(sum(cash))}</span> ${D.t("col_collected")} · ${D.t("pay_rejected")} + ${D.t("pay_cancelled")} ${D.t("pay_excluded_note")}
+        </div>
+        <div class="muted" style="padding:0 14px 9px;font-size:11.5px">🔍 ${D.t("chk_pay")}</div>
+        <div class="panel-head" style="border-top:1px solid var(--bdr)"><h2>${D.t("pay_by_rep")}</h2></div>
+        ${repRows ? `<table class="dt">
+          ${payRepHead()}
+          <tbody>${repRows}</tbody>
+        </table>` : `<div class="empty">${D.t("no_data")}</div>`}`;
+    }
+
+    // month-to-date payments per salesperson — twin of the month invoices table
+    function renderPayMonthReps(paysRC) {
+      const box = document.getElementById("payMonthRepBox");
+      const rows = paysRC.filter(p => String(p.date).slice(0, 7) === thisMonth);
+      if (!rows.length) { box.innerHTML = `<div class="empty">${D.t("no_data")}</div>`; return; }
+      const total = rows.reduce((s, p) => s + num(p.amount), 0);
+      box.innerHTML = `
+        <table class="dt">
+          ${payRepHead()}
+          <tbody>${payRepRows(payRepAgg(rows))}</tbody>
+        </table>
+        <div class="muted" style="padding:9px 14px;font-size:12px">
+          ${thisMonth} · ${D.fmtNum(rows.length)} ${D.t("payments_count")} ·
+          <span class="ok">${D.fmtMoney(total)}</span>
+          <br>🔍 ${D.t("chk_pay_month")}
+        </div>`;
+    }
+
+    // today's customer invoices by status — the accounting view of the day.
+    // Every row is checkable in Odoo → Accounting → Customer Invoices.
+    function renderInvToday(orderedToday) {
+      const box = document.getElementById("invTodayBox");
+      if (!invToday) { box.innerHTML = `<div class="empty">${D.t("loading")}</div>`; return; }
+      // rebuild ALL status buckets from the FILTERED invoice-level rows, so
+      // the rep/customer filter narrows this whole card, not only the
+      // per-rep table (falls back to the global buckets on stale caches)
+      const t = invStats();
+      const row = (label, b, cls) => `<tr${cls ? ` class="${cls}"` : ""}>
+        <td class="strong">${label}</td>
+        <td class="amt">${D.fmtNum(b.n)}</td>
+        <td class="amt">${D.fmtMoney(b.value)}</td>
+        <td class="amt">${b.residual > 0 ? `<span class="danger">${D.fmtMoney(b.residual)}</span>` : `<span class="muted">0</span>`}</td>
+      </tr>`;
+      const gap = Math.max(0, num(orderedToday) - num(t.posted.value));
+      const repRows = repTableRows(invToday.posted_rows || []);
+      box.innerHTML = `
+        <table class="dt">
+          <thead><tr><th>${D.t("ack_status")}</th><th>${D.t("col_count")}</th><th>${D.t("col_amount")}</th><th>${D.t("col_still_unpaid")}</th></tr></thead>
+          <tbody>
+            ${row("<b>" + D.t("st_posted_tot") + "</b>", t.posted)}
+            ${row(`<span class="ok">✓ ${D.t("st_paid")}</span>`, t.paid)}
+            ${row(D.t("st_partial"), t.partial)}
+            ${row(D.t("st_unpaid"), t.unpaid)}
+            ${row(`<span class="muted">${D.t("st_cancelled_inv")}</span>`, t.cancelled, "")}
+          </tbody>
+        </table>
+        <div class="muted" style="padding:9px 14px;font-size:12px">
+          <span class="ok">${D.fmtMoney(t.collected)}</span> ${D.t("collected_same_day")}
+          ${gap > 0 ? ` · ${D.fmtMoney(gap)} ${D.t("inv_gap_note")}` : ""}
+        </div>
+        <div class="muted" style="padding:0 14px 9px;font-size:11.5px">🔍 ${D.t("chk_inv_today")}</div>
+        ${repRows ? `
+        <div class="panel-head" style="border-top:1px solid var(--bdr)"><h2>${D.t("inv_by_rep")}</h2></div>
+        <table class="dt">
+          ${repTableHead()}
+          <tbody>${repRows}</tbody>
+        </table>` : ""}`;
+    }
+
+    // Shared by the today/month per-rep invoice tables. Aggregates the
+    // INVOICE-LEVEL rows client-side so BOTH filters apply: salesperson
+    // (uid-aware — spellings differ between tables) and customer name.
+    // Names are DB strings — they go through D.esc.
+    // Orders by day — the numeric twin of Odoo's Orders list grouped by
+    // "Order Date: Day > Status". Rows = the filter-range slice (date +
+    // rep + customer already applied); money = ALL statuses, like Odoo's
+    // Total column, so the two screens are comparable line by line.
+    function renderOrdersByDay(rows) {
+      const box = document.getElementById("ordDayBox");
+      if (!rows.length) { box.innerHTML = `<div class="empty">${D.t("no_data")}</div>`; return; }
+      const m = new Map();
+      rows.forEach(o => {
+        const d = dayOf(o); if (!d) return;
+        if (!m.has(d)) m.set(d, { total: 0, conf: 0, cancel: 0, draft: 0, money: 0 });
+        const e = m.get(d);
+        e.total++; e.money += val(o);
+        if (isConf(o)) e.conf++;
+        else if (o.state === "cancel") e.cancel++;
+        else e.draft++;
+      });
+      const days = [...m.entries()].sort((a, b) => b[0] < a[0] ? -1 : 1);
+      const sumF = f => days.reduce((s, [, e]) => s + e[f], 0);
+      box.innerHTML = `
+        <table class="dt">
+          <thead><tr>
+            <th>${D.t("col_day")}</th><th>${D.t("col_count")}</th>
+            <th>${D.t("ov_confirmed_short")}</th><th>${D.t("ov_quotes")}</th>
+            <th>${D.t("st_cancelled_inv")}</th><th>${D.t("col_amount")}</th>
+          </tr></thead>
+          <tbody>
+          ${days.map(([d, e]) => `<tr>
+            <td class="strong">${d}</td>
+            <td class="amt">${D.fmtNum(e.total)}</td>
+            <td class="amt"><span class="ok">${D.fmtNum(e.conf)}</span></td>
+            <td class="amt">${e.draft ? D.fmtNum(e.draft) : `<span class="muted">0</span>`}</td>
+            <td class="amt">${e.cancel ? `<span class="danger">${D.fmtNum(e.cancel)}</span>` : `<span class="muted">0</span>`}</td>
+            <td class="amt"><b>${D.fmtMoney(e.money)}</b></td>
+          </tr>`).join("")}
+          </tbody>
+          <tfoot><tr>
+            <td><b>${D.t("coll_grand_total")}</b></td>
+            <td class="amt"><b>${D.fmtNum(sumF("total"))}</b></td>
+            <td class="amt"><b>${D.fmtNum(sumF("conf"))}</b></td>
+            <td class="amt">${D.fmtNum(sumF("draft"))}</td>
+            <td class="amt">${D.fmtNum(sumF("cancel"))}</td>
+            <td class="amt"><b>${D.fmtMoney(sumF("money"))}</b></td>
+          </tr></tfoot>
+        </table>
+        <div class="muted" style="padding:9px 14px;font-size:11.5px">🔍 ${D.t("chk_orders")}</div>`;
+    }
+
+    // today's invoice stats over the FILTERED rows — same buckets as the
+    // builder, recomputed client-side so filters narrow the whole card.
+    // Falls back to the builder's global buckets if posted_rows is absent
+    // (stale 4-min cache from a pre-v56 load).
+    function invStats() {
+      const t = invToday;
+      if (!t || !t.posted_rows) {
+        return t ? { posted: t.posted, paid: t.paid, partial: t.partial, unpaid: t.unpaid,
+          cancelled: t.cancelled, collected: num(t.collected_today) } : null;
+      }
+      const rows = filterInvRows(t.posted_rows);
+      const canc = filterInvRows(t.cancelled_rows || []);
+      const B = a => ({ n: a.length,
+        value: a.reduce((s, r) => s + r.value, 0),
+        residual: a.reduce((s, r) => s + r.residual, 0) });
+      const posted = B(rows);
+      return {
+        posted,
+        paid: B(rows.filter(r => r.residual === 0)),
+        partial: B(rows.filter(r => r.residual > 0 && r.residual < r.value)),
+        unpaid: B(rows.filter(r => r.residual !== 0 && r.residual >= r.value)),
+        cancelled: B(canc),
+        collected: posted.value - posted.residual
+      };
+    }
+
+    // apply the page's rep (uid-aware) + customer filters to invoice-level rows
+    function filterInvRows(rows) {
+      const v = fb.values();
+      const uid = v.rep ? repUid(v.rep) : null;
+      let list = rows || [];
+      if (v.rep) list = list.filter(r => (uid != null && r.user_id === uid) || r.salesperson === v.rep);
+      if (v.cust) list = list.filter(r => String(r.partner_name || "").toLowerCase().includes(v.cust));
+      return list;
+    }
+    function invRepAgg(rows) {
+      const list = filterInvRows(rows);
+      const m = new Map();
+      list.forEach(r => {
+        const k = r.user_id != null ? r.user_id : (r.salesperson || "—");
+        if (!m.has(k)) m.set(k, { user_id: r.user_id, salesperson: r.salesperson, n: 0, value: 0, residual: 0 });
+        const e = m.get(k); e.n++; e.value += r.value; e.residual += r.residual;
+      });
+      return [...m.values()].sort((a, b) => b.value - a.value);
+    }
+    function repTableRows(rows) {
+      return invRepAgg(rows).map(r => `<tr>
+        <td class="strong">${D.esc(r.salesperson)}</td>
+        <td class="amt">${D.fmtNum(r.n)}</td>
+        <td class="amt">${D.fmtMoney(r.value)}</td>
+        <td class="amt">${r.residual > 0 ? `<span class="danger">${D.fmtMoney(r.residual)}</span>` : `<span class="muted">0</span>`}</td>
+        <td class="amt"><span class="ok">${D.fmtMoney(r.value - r.residual)}</span></td>
+      </tr>`).join("");
+    }
+    const repTableHead = () =>
+      `<thead><tr><th>${D.t("col_rep")}</th><th>${D.t("col_count")}</th><th>${D.t("col_amount")}</th><th>${D.t("col_still_unpaid")}</th><th>${D.t("col_collected")}</th></tr></thead>`;
+
+    // month-to-date posted invoices per salesperson — the monthly twin of
+    // the invoiced-today table (same basis: posted INV/ documents,
+    // amount_residual = still unpaid as of the last sync)
+    function renderInvMonthReps() {
+      const box = document.getElementById("invMonthRepBox");
+      if (!invMonth) { box.innerHTML = `<div class="empty">${D.t("loading")}</div>`; return; }
+      const rows = repTableRows(invMonth.posted_rows || []);
+      if (!rows) { box.innerHTML = `<div class="empty">${D.t("no_data")}</div>`; return; }
+      box.innerHTML = `
+        <table class="dt">
+          ${repTableHead()}
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="muted" style="padding:9px 14px;font-size:12px">
+          ${invMonth.month} · ${D.fmtNum(invMonth.count)} ${D.t("invoices_w")} ·
+          <span class="ok">${D.fmtMoney(num(invMonth.collected))}</span> ${D.t("collected_so_far")}
+          <br>🔍 ${D.t("chk_inv_month")}
+        </div>`;
+    }
+
+    // weekly confirmed revenue (Sat-start weeks) — trajectory beyond the month
+    function drawWeekly(confAll) {
+      const m = {};
+      confAll.forEach(o => {
+        const d = dayOf(o); if (!d) return;
+        const w = D.weekStartSat(d);
+        if (!m[w]) m[w] = { value: 0, orders: 0 };
+        m[w].value += val(o); m[w].orders++;
+      });
+      const weeks = Object.keys(m).sort().slice(-6);
+      const curW = D.weekStartSat(today);
+      const ctx = document.getElementById("weekChart");
+      if (weekChart) weekChart.destroy();
+      weekChart = new Chart(ctx, {
+        type: "bar",
+        data: { labels: weeks.map(w => w.slice(5)), datasets: [{
+          data: weeks.map(w => m[w].value),
+          backgroundColor: weeks.map(w => w === curW ? "#93c5fd" : "#2563eb"),
+          borderRadius: 5, maxBarThickness: 44 }] },
+        options: { maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: {
+            label: c => {
+              const w = weeks[c.dataIndex];
+              const part = w === curW ? ` (${D.t("wk_partial")})` : "";
+              return `${D.fmtMoney(m[w].value)} · ${D.fmtNum(m[w].orders)} ${D.t("orders")}${part}`;
+            } } } },
+          scales: { y: { beginAtZero: true, ticks: { callback: v => D.fmtMoney(v) } } } }
+      });
+    }
+
+    function drawByDay(rows) {
+      // Stacked: confirmed (blue) + quotations (amber) + cancelled (grey),
+      // bucketed by Baghdad day. The bar TOTAL matches Odoo's grouped Orders
+      // list (which counts every record), while the blue segment remains the
+      // only thing any KPI/total ever counts (hard rule: quotations and
+      // cancelled are never sales).
+      const isQuote = o => o.state === "draft" || o.state === "sent";
+      const m = {};
+      rows.forEach(o => {
+        const d = dayOf(o); if (!d) return;
+        if (!m[d]) m[d] = { conf: 0, value: 0, quote: 0, cancel: 0 };
+        if (isConf(o)) { m[d].conf++; m[d].value += val(o); }
+        else if (isQuote(o)) m[d].quote++;
+        else m[d].cancel++;
+      });
+      const days = Object.keys(m).sort();
+      const ctx = document.getElementById("dayChart");
+      if (dayChart) dayChart.destroy();
+      dayChart = new Chart(ctx, {
+        type: "bar",
+        data: { labels: days.map(d => d.slice(8, 10) + "/" + d.slice(5, 7)), datasets: [
+          { label: D.t("ov_confirmed"), data: days.map(d => m[d].conf),
+            backgroundColor: "#2563eb", borderRadius: 5, maxBarThickness: 34 },
+          { label: D.t("ov_quotes"), data: days.map(d => m[d].quote),
+            backgroundColor: "#f59e0b", borderRadius: 5, maxBarThickness: 34 },
+          { label: D.t("ov_not_confirmed"), data: days.map(d => m[d].cancel),
+            backgroundColor: "#cbd5e1", borderRadius: 5, maxBarThickness: 34 }
+        ] },
+        options: { maintainAspectRatio: false,
+          plugins: { legend: { display: true, position: "bottom" }, tooltip: { callbacks: {
+            label: c => {
+              const b = m[days[c.dataIndex]];
+              if (c.datasetIndex === 0) return `${D.t("ov_confirmed")}: ${D.fmtNum(b.conf)} ${D.t("orders")} · ${D.fmtMoney(b.value)}`;
+              if (c.datasetIndex === 1) return `${D.t("ov_quotes")}: ${D.fmtNum(b.quote)}`;
+              return `${D.t("ov_not_confirmed")}: ${D.fmtNum(b.cancel)}`;
+            },
+            footer: items => {
+              const b = m[days[items[0].dataIndex]];
+              return `${D.t("ov_total_incl")}: ${D.fmtNum(b.conf + b.quote + b.cancel)}`;
+            } } } },
+          scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } } }
+      });
+    }
+
+    function drawTopCustomers(conf) {
+      const m = {};
+      conf.forEach(o => { const n = o.partner_name || "—"; if (!m[n]) m[n] = { orders: 0, value: 0 }; m[n].orders++; m[n].value += val(o); });
+      const top = Object.entries(m).map(([name, x]) => ({ name, ...x })).sort((a, b) => b.value - a.value).slice(0, 8);
+      const ctx = document.getElementById("custChart");
+      if (custChart) custChart.destroy();
+      custChart = new Chart(ctx, {
+        type: "bar",
+        data: { labels: top.map(x => x.name), datasets: [{
+          label: D.t("kpi_value"), data: top.map(x => x.value), backgroundColor: "#0ea5e9", borderRadius: 5, maxBarThickness: 20 }] },
+        options: { maintainAspectRatio: false, indexAxis: "y",
+          plugins: { legend: { display: false }, tooltip: { callbacks: {
+            label: c => `${D.fmtMoneyFull(c.parsed.x)} · ${D.fmtNum(top[c.dataIndex].orders)} ${D.t("orders")}` } } },
+          scales: { x: { beginAtZero: true, ticks: { callback: v => D.fmtMoney(v) } } } }
+      });
+    }
+
+    // Two-phase load: paint from orders+payments as soon as they arrive
+    // (~1-2s); debt/aging/uninvoiced re-render when their queries finish.
+    // Waiting for everything before the first paint made the page look
+    // frozen on slow connections.
+    document.getElementById("todayKpis").innerHTML =
+      `<div class="kpi"><div class="kpi-l">&nbsp;</div><div class="kpi-n" style="font-size:15px">${D.t("loading")}</div><div class="kpi-sub">&nbsp;</div></div>`;
+    (async function init() {
+      loadSnapshots().then(safeRender);
+      await loadWindow(lastMonthStart, today);
+      safeRender();
+    })();
+    setInterval(async () => {
+      loadSnapshots().then(safeRender);
+      await loadWindow(loadedFrom || lastMonthStart, loadedTo || today);
+      safeRender();
+    }, D.cfg.POLL_MS);
+  })();
   </script>
-  <script type="module" src="assets/js/pages/overview.js?v=36"></script>
 </body>
 </html>

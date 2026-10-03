@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dabboos — Credit & Collections</title>
+  <link rel="stylesheet" href="assets/css/style.css?v=82" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1729" />
+  <link rel="apple-touch-icon" href="assets/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>" />
+</head>
+<body>
+  <header id="appHeader" class="app"></header>
+  <main class="wrap">
+    <div class="page-head">
+      <h1 id="pgTitle"></h1>
+      <p id="pgSub"></p>
+    </div>
+
+    <div class="filters" id="fbHost"></div>
+    <p id="liveNote" class="muted" style="margin:-6px 2px 12px;font-size:12px"></p>
+
+    <div id="kpis" class="kpi-grid" data-src="dashboard_invoices"></div>
+
+    <div class="grid-2">
+      <div class="panel" data-src="dashboard_invoices dashboard_customers">
+        <div class="panel-head"><h2 id="govTitle"></h2></div>
+        <div class="panel-body"><div class="chart-box"><canvas id="govChart"></canvas></div></div>
+      </div>
+      <div class="panel" data-src="dashboard_invoices">
+        <div class="panel-head"><h2 id="repTitle"></h2></div>
+        <div class="panel-body"><div class="chart-box"><canvas id="repChart"></canvas></div></div>
+      </div>
+    </div>
+
+    <div class="panel" data-src="dashboard_invoices">
+      <div class="panel-head"><h2 id="tblTitle"></h2></div>
+      <div class="panel-body cap" style="padding:0"><div id="debtBox"></div></div>
+    </div>
+
+    <div class="foot">Dabboos Sales Command Center · Odoo → n8n → Supabase</div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="assets/js/config.js?v=82"></script>
+  <script src="assets/js/auth.js?v=82"></script>
+  <script src="assets/js/common.js?v=82"></script>
+  <script src="assets/js/order-modal.js?v=82"></script>
+  <script>
+  (function () {
+    const D = window.DASH;
+    D.buildChrome("debt");
+    document.getElementById("pgTitle").textContent = D.t("debt_title");
+    document.getElementById("pgSub").textContent = D.t("debt_page_sub");
+    document.getElementById("tblTitle").textContent = D.t("debt_table_title");
+    document.getElementById("liveNote").innerHTML =
+      D.t("debt_note_live") + "<br>🔍 " + D.t("chk_aged"); // static i18n strings only
+    document.getElementById("govTitle").textContent = D.t("debt_by_gov");
+    document.getElementById("repTitle").textContent = D.t("debt_by_rep");
+
+    const kpi = (cls, label, num, sub) =>
+      `<div class="kpi ${cls}"><div class="kpi-l">${label}</div><div class="kpi-n">${num}</div><div class="kpi-sub">${sub || "&nbsp;"}</div></div>`;
+    const PAL = ["#dc2626","#ea580c","#d97706","#ca8a04","#16a34a","#0891b2","#2563eb","#7c3aed","#db2777","#9333ea"];
+
+    let rows = [];            // flattened debtors (one per customer), tagged with salesperson + rep totals
+    let repTotals = [];       // [{salesperson, overdue}]
+    let order = null;         // collections snapshot (order-based metrics)
+    let govChart = null, repChart = null;
+
+    // Debt is point-in-time → date filter hidden; rep + customer search active.
+    const fb = D.filterBar(document.getElementById("fbHost"), { date: false, rep: true, customer: true }, render);
+
+    function render() {
+      const box = document.getElementById("debtBox");
+      const kbox = document.getElementById("kpis");
+      if (!rows.length) { kbox.innerHTML = ""; box.innerHTML = `<div class="empty">${D.t("no_data")}</div>`; fb.setCount(0); return; }
+
+      const v = fb.values();
+      const uid = v.rep ? (() => {
+        const hit = masterReps.find(m => m.name === v.rep) || rows.find(r => r.salesperson === v.rep && r.user_id != null);
+        return hit ? (hit.user_id != null ? hit.user_id : null) : null;
+      })() : null;
+      const f = rows.filter(r =>
+        (!v.rep || r.salesperson === v.rep || (uid != null && r.user_id === uid)) &&
+        fb.match(r, { cust: "name" }));
+      fb.setCount(f.length);
+
+      const receivable = f.reduce((s, r) => s + r.receivable, 0);
+      const overdue = f.reduce((s, r) => s + r.overdue, 0);
+      const duePct = receivable > 0 ? Math.round(overdue / receivable * 100) : 0;
+      // concentration: top-10 debtors' share of overdue
+      const byOver = [...f].sort((a, b) => b.overdue - a.overdue);
+      const top10 = byOver.slice(0, 10).reduce((s, r) => s + r.overdue, 0);
+      const conc = overdue > 0 ? Math.round(top10 / overdue * 100) : 0;
+
+      kbox.innerHTML =
+        kpi("k-vio", D.t("debt_total_all"), D.fmtMoney(receivable), `${D.fmtNum(f.length)} ${D.t("debt_customers_no")}`) +
+        kpi("k-red", D.t("debt_due_all"), D.fmtMoney(overdue), D.t("debt_due_sub")) +
+        kpi("k-amb", D.t("debt_due_pct"), duePct + "%", D.t("debt_due_pct_sub")) +
+        kpi("", D.t("debt_concentration"), conc + "%", D.t("debt_top10_sub")) +
+        kpi("k-red", D.t("new_risk"), order ? D.fmtMoney(order.new_risk_value) : "—", order ? `${D.fmtNum(order.new_risk_count)} ${D.t("orders")}` : "&nbsp;");
+
+      drawGov(f);
+      drawReps(f);
+
+      const top = byOver.slice(0, 200);
+      box.innerHTML = `
+        <table class="dt">
+          <thead><tr>
+            <th>${D.t("col_customer")}</th><th>${D.t("col_rep")}</th>
+            <th>${D.t("col_gov")}</th><th>${D.t("col_city")}</th>
+            <th>${D.t("col_total_open")}</th><th>${D.t("col_overdue")}</th>
+          </tr></thead>
+          <tbody>
+          ${top.map(c => `<tr>
+            <td class="strong">${c.partner_id != null
+              ? `<a class="order-link cust-link" data-pid="${D.esc(c.partner_id)}" data-name="${D.esc(c.name)}">${D.esc(c.name)}</a>`
+              : D.esc(c.name)}</td>
+            <td class="muted">${D.esc(c.salesperson)}</td>
+            <td class="muted">${D.govLabel(D.govOf(c.city).key)}</td>
+            <td class="muted">${D.esc(c.city || "—")}</td>
+            <td class="amt">${D.fmtMoney(c.receivable)}</td>
+            <td class="amt">${c.overdue > 0 ? `<span class="danger">${D.fmtMoney(c.overdue)}</span>` : `<span class="muted">0</span>`}</td>
+          </tr>`).join("")}
+          </tbody>
+        </table>`;
+      // click a customer → open-invoice detail modal
+      box.querySelectorAll(".cust-link").forEach(a =>
+        a.addEventListener("click", () => openCustomer(a.dataset.pid, a.dataset.name)));
+    }
+
+    /* ---- customer drill-down: every open invoice with its dates,
+       amount, remaining, and days overdue — the row-level proof that
+       matches the customer's expanded row in Odoo's Aged Receivable ---- */
+    function ensureCustModal() {
+      let m = document.getElementById("custModal");
+      if (m) return m;
+      m = document.createElement("div");
+      m.id = "custModal";
+      m.className = "modal-overlay";
+      m.innerHTML = `
+        <div class="modal" role="dialog" aria-modal="true">
+          <div class="modal-head">
+            <div id="cmTitle" class="modal-title"></div>
+            <button id="cmClose" class="icon-btn" type="button">✕</button>
+          </div>
+          <div id="cmBody" class="modal-body" style="padding:0"></div>
+        </div>`;
+      document.body.appendChild(m);
+      m.addEventListener("click", e => { if (e.target === m) m.classList.remove("open"); });
+      m.querySelector("#cmClose").addEventListener("click", () => m.classList.remove("open"));
+      document.addEventListener("keydown", e => { if (e.key === "Escape") m.classList.remove("open"); });
+      return m;
+    }
+
+    async function openCustomer(pid, name) {
+      const m = ensureCustModal();
+      m.querySelector("#cmTitle").textContent = D.t("cust_detail") + " — " + name;
+      const body = m.querySelector("#cmBody");
+      body.innerHTML = `<div class="empty">${D.t("loading")}</div>`;
+      m.classList.add("open");
+      try {
+        const today = D.bagDay(new Date().toISOString());
+        const inv = await D.sbGetAll(
+          `dashboard_invoices?select=name,invoice_date,due_date,amount_total,amount_residual` +
+          `&partner_id=eq.${encodeURIComponent(pid)}&state=eq.posted&amount_residual=neq.0` +
+          `&order=due_date.asc,invoice_id.asc`);
+        if (!inv.length) { body.innerHTML = `<div class="empty">${D.t("no_data")}</div>`; return; }
+        const num = n => Number(n) || 0;
+        let recv = 0, over = 0;
+        const rowsHtml = inv.map(x => {
+          const res = num(x.amount_residual);
+          const due = x.due_date ? String(x.due_date).slice(0, 10) : "";
+          const late = due && due < today ? Math.round((Date.parse(today) - Date.parse(due)) / 864e5) : 0;
+          recv += res; if (due && due < today) over += res;
+          return `<tr>
+            <td class="strong">${D.esc(x.name)}</td>
+            <td class="muted">${D.esc(String(x.invoice_date || "—").slice(0, 10))}</td>
+            <td class="muted">${due || "—"}</td>
+            <td class="amt">${D.fmtMoney(num(x.amount_total))}</td>
+            <td class="amt">${res < 0 ? `<span class="ok">${D.fmtMoney(res)}</span>` : D.fmtMoney(res)}</td>
+            <td class="amt">${late > 0 ? `<span class="${late > 60 ? "danger" : ""}">${D.fmtNum(late)}</span>` : `<span class="muted">—</span>`}</td>
+          </tr>`;
+        }).join("");
+        body.innerHTML = `
+          <table class="dt">
+            <thead><tr>
+              <th>${D.t("col_invoice")}</th><th>${D.t("col_inv_date")}</th><th>${D.t("col_due_date")}</th>
+              <th>${D.t("col_amount")}</th><th>${D.t("col_still_unpaid")}</th><th>${D.t("od_days")}</th>
+            </tr></thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          <div style="padding:11px 14px;font-size:13px;border-top:1px solid var(--bdr)">
+            ${D.t("col_total_open")}: <b>${D.fmtMoney(recv)}</b> ·
+            ${D.t("col_overdue")}: <span class="danger"><b>${D.fmtMoney(over)}</b></span> ·
+            ${D.t("col_notdue")}: <b>${D.fmtMoney(recv - over)}</b>
+          </div>
+          <div class="muted" style="padding:9px 14px;font-size:11.5px">🔍 ${D.t("chk_partner")}</div>`;
+      } catch (e) {
+        body.innerHTML = `<div class="err">${D.t("error_load")}</div>`;
+      }
+    }
+
+    function drawGov(f) {
+      const m = {};
+      f.forEach(r => { if (r.overdue <= 0) return; const g = D.govOf(r.city); if (!m[g.key]) m[g.key] = { label: D.govLabel(g.key), overdue: 0, customers: 0 }; m[g.key].overdue += r.overdue; m[g.key].customers++; });
+      const top = Object.values(m).sort((a, b) => b.overdue - a.overdue).slice(0, 10);
+      const ctx = document.getElementById("govChart");
+      if (govChart) govChart.destroy();
+      govChart = new Chart(ctx, {
+        type: "bar",
+        data: { labels: top.map(x => x.label), datasets: [{ data: top.map(x => x.overdue),
+          backgroundColor: top.map((_, i) => PAL[i % PAL.length]), borderRadius: 5 }] },
+        options: { indexAxis: "y", maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: {
+            label: c => `${D.fmtMoneyFull(c.parsed.x)} · ${D.fmtNum(top[c.dataIndex].customers)} ${D.t("debt_customers_no")}` } } },
+          scales: { x: { beginAtZero: true, ticks: { callback: v => D.fmtMoney(v) } } } }
+      });
+    }
+
+    function drawReps(f) {
+      const m = {};
+      f.forEach(r => { if (r.overdue <= 0) return; if (!m[r.salesperson]) m[r.salesperson] = 0; m[r.salesperson] += r.overdue; });
+      const top = Object.entries(m).map(([k, v]) => ({ name: k, overdue: v })).sort((a, b) => b.overdue - a.overdue).slice(0, 10);
+      const ctx = document.getElementById("repChart");
+      if (repChart) repChart.destroy();
+      repChart = new Chart(ctx, {
+        type: "bar",
+        data: { labels: top.map(x => x.name), datasets: [{ data: top.map(x => x.overdue),
+          backgroundColor: "#dc2626", borderRadius: 5, maxBarThickness: 22 }] },
+        options: { indexAxis: "y", maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: {
+            label: c => D.fmtMoneyFull(c.parsed.x) } } },
+          scales: { x: { beginAtZero: true, ticks: { callback: v => D.fmtMoney(v) } } } }
+      });
+    }
+
+    let masterReps = [];
+    async function tick() {
+      let snap;
+      try { snap = await D.api("rep_debt"); }
+      catch (e) { document.getElementById("debtBox").innerHTML = `<div class="err">${D.t("error_load")}</div>`; return; }
+      try { order = await D.api("collections"); } catch (e) { order = null; }
+      try { masterReps = await D.loadSalespeopleMaster(); } catch (e) { masterReps = masterReps || []; }
+      D.setUpdated(snap.generated_at);
+      rows = [];
+      (snap.reps || []).forEach(r => (r.customers || []).forEach(c => {
+        rows.push({ partner_id: c.partner_id != null ? c.partner_id : null,
+          name: c.name, city: c.city, receivable: c.receivable || 0, overdue: c.overdue || 0,
+          salesperson: r.salesperson, user_id: r.user_id != null ? r.user_id : null });
+      }));
+      // master list + debt-snapshot spellings, matched by user_id first
+      fb.setReps([...masterReps.map(r => r.name), ...(snap.reps || []).map(r => r.salesperson)]);
+      render();
+    }
+    tick();
+    setInterval(tick, D.cfg.POLL_MS * 5);
+  })();
+  </script>
+</body>
+</html>

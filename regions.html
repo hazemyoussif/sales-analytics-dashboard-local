@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dabboos — Cities & Governorates</title>
+  <link rel="stylesheet" href="assets/css/style.css?v=82" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1729" />
+  <link rel="apple-touch-icon" href="assets/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗺️</text></svg>" />
+</head>
+<body>
+  <header id="appHeader" class="app"></header>
+  <main class="wrap">
+    <div class="page-head">
+      <h1 id="pgTitle"></h1>
+      <p id="pgSub"></p>
+    </div>
+
+    <p id="basisNote" class="muted" style="margin:-4px 2px 10px;font-size:12px;line-height:1.6"></p>
+    <div id="unmappedBanner" style="display:none"></div>
+
+    <div class="filters">
+      <select id="basisSel" class="fb-sel"></select>
+      <label class="fb-field"><span id="fromLbl"></span><input id="fFrom" class="fb-date" type="date"></label>
+      <label class="fb-field"><span id="toLbl"></span><input id="fTo" class="fb-date" type="date"></label>
+      <select id="govSel" class="fb-sel"></select>
+      <input id="q" class="search-box" type="search">
+      <button id="clr" class="fb-clear" type="button"></button>
+      <span id="cnt" class="fb-count"></span>
+    </div>
+
+    <div id="kpiRow" class="kpi-grid" data-src="dashboard_orders" style="display:none"></div>
+
+    <div class="grid-2" data-src="dashboard_orders dashboard_invoices dashboard_customers">
+      <div class="panel">
+        <div class="panel-head"><h2 id="govChTitle"></h2></div>
+        <div class="panel-body"><div class="chart-box tall"><canvas id="govChart"></canvas></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2 id="govTblTitle"></h2></div>
+        <div class="panel-body" style="padding:0"><div id="govTable"></div></div>
+      </div>
+    </div>
+
+    <div id="moversPanel" class="panel" data-src="dashboard_orders" style="display:none">
+      <div class="panel-head"><h2 id="moversTitle"></h2><span id="moversSub" class="muted" style="font-size:12px;font-weight:400"></span></div>
+      <div class="panel-body"><div id="moversBody"></div></div>
+    </div>
+
+    <div id="coveragePanel" class="panel" data-src="dashboard_orders dashboard_customers" style="display:none">
+      <div class="panel-head"><h2 id="coverageTitle"></h2><span id="coverageSub" class="muted" style="font-size:12px;font-weight:400"></span></div>
+      <div class="panel-body cap"><div id="coverageBody"></div></div>
+    </div>
+
+    <div class="panel" data-src="dashboard_orders dashboard_invoices dashboard_customers">
+      <div class="panel-head"><h2 id="cityTblTitle"></h2></div>
+      <div class="panel-body cap" style="padding:0"><div id="cityTable"></div></div>
+    </div>
+
+    <div class="foot">Dabboos Sales Command Center · n8n + Odoo</div>
+
+    <div id="quietModal" class="modal-overlay">
+      <div class="modal" style="max-width:640px">
+        <div class="modal-head">
+          <div id="quietTitle" class="modal-title"></div>
+          <button id="quietClose" class="icon-btn" type="button">✕</button>
+        </div>
+        <div class="modal-body" style="padding:0 0 8px">
+          <p id="quietSub" class="muted" style="margin:12px 20px 8px;font-size:12px"></p>
+          <div id="quietBody" style="max-height:68vh;overflow:auto"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="assets/js/config.js?v=82"></script>
+  <script src="assets/js/auth.js?v=82"></script>
+  <script src="assets/js/common.js?v=82"></script>
+  <script>
+  (function () {
+    const D = window.DASH;
+    D.buildChrome("regions");
+    document.getElementById("pgTitle").textContent = D.t("regions_title");
+    document.getElementById("pgSub").textContent = D.t("regions_sub");
+    document.getElementById("govChTitle").textContent = D.t("govs_title");
+    document.getElementById("govTblTitle").textContent = D.t("govs_title");
+    document.getElementById("cityTblTitle").textContent = D.t("cities_title");
+    document.getElementById("fromLbl").textContent = D.t("f_from");
+    document.getElementById("toLbl").textContent = D.t("f_to");
+    document.getElementById("q").placeholder = D.t("search_ph");
+    document.getElementById("clr").textContent = D.t("f_clear");
+
+    // basis toggle: Orders (what was ordered) vs Invoices (what was billed).
+    // Both read governorate/city from the customer master VERBATIM, so each
+    // is directly comparable with its Odoo screen. Persisted per browser.
+    let basis = localStorage.getItem("regions_basis") === "inv" ? "inv" : "ord";
+    const basisSel = document.getElementById("basisSel");
+    basisSel.innerHTML =
+      `<option value="ord"${basis === "ord" ? " selected" : ""}>${D.t("basis_orders")}</option>` +
+      `<option value="inv"${basis === "inv" ? " selected" : ""}>${D.t("basis_invoices")}</option>`;
+    const setBasisNote = () => { document.getElementById("basisNote").textContent = D.t(basis === "inv" ? "region_basis_inv" : "region_basis"); };
+    setBasisNote();
+    const countLabel = () => basis === "inv" ? D.t("invoices_w") : D.t("orders");
+    // invoice mode keeps the two document types SEPARATE (owner request):
+    // Sales invoices (primary) · Returns (own column) · Net (= Odoo). The
+    // "amount" column becomes Sales invoices; Returns + Net are extra cols.
+    const amtHeader = () => basis === "inv" ? D.t("col_sales_inv") : D.t("col_amount");
+    const extraTh = () => basis === "inv" ? `<th>${D.t("col_returns")}</th><th>${D.t("col_net")}</th>` : "";
+    const extraTd = r => basis === "inv"
+      ? `<td class="amt">${r.returns < 0 ? `<span class="danger">${D.fmtMoney(r.returns)}</span>` : `<span class="muted">0</span>`}</td>` +
+        `<td class="amt"><b>${D.fmtMoney(r.net)}</b></td>`
+      : "";
+
+    const PALETTE = ["#2563eb","#7c3aed","#16a34a","#d97706","#dc2626","#0891b2","#db2777","#65a30d","#9333ea","#0d9488","#ea580c","#4f46e5"];
+    const isConf = o => o.state === "sale" || o.state === "done";
+    const val = o => Number(o.amount_total) || 0;
+
+    let chart = null;
+    let cityRows = [];            // [{city, govKey, govLabel, orders, value}]
+    let loadedFrom = null, loadedTo = null, loadedBasis = null;
+
+    const bag = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Baghdad" }));
+    const pad = n => String(n).padStart(2, "0");
+    const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+    const today = ymd(bag);
+    const from30 = ymd(new Date(bag.getTime() - 29 * 864e5));
+    const monthStart = today.slice(0, 8) + "01"; // 1st of the current month (Baghdad)
+
+    const $ = id => document.getElementById(id);
+    // default to the current month so the page opens on a live this-month-vs-last story
+    $("fFrom").value = monthStart; $("fTo").value = today;
+    ["fFrom", "fTo"].forEach(id => $(id).addEventListener("input", onDate));
+    $("govSel").addEventListener("input", render);
+    $("q").addEventListener("input", render);
+    $("clr").addEventListener("click", () => { $("q").value = ""; $("govSel").value = ""; render(); });
+    $("quietClose").addEventListener("click", closeQuiet);
+    $("quietModal").addEventListener("click", e => { if (e.target === $("quietModal")) closeQuiet(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") closeQuiet(); });
+    basisSel.addEventListener("change", async () => {
+      basis = basisSel.value; localStorage.setItem("regions_basis", basis); setBasisNote();
+      const from = $("fFrom").value || from30, to = $("fTo").value || today;
+      $("govSel").value = ""; // gov codes carry across bases, but reset to avoid an empty view
+      await loadWindow(from, to); fillGovSelect(); render();
+    });
+
+    // ---- pure helpers (unit-tested in Node — see the design spec) ----
+    function pctChange(cur, prev) { if (prev > 0) return (cur - prev) / prev; if (cur > 0) return null; return 0; }
+    function isPriorCovered(minYmd, prevFrom) { return !!minYmd && minYmd <= prevFrom; }
+    function coverage(active, total) { const a = active || 0, t = Math.max(total || 0, a); return { active: a, total: t, gap: Math.max(0, t - a) }; }
+    function countQuiet(prevIds, curIds) { const cur = new Set(curIds); let n = 0; new Set(prevIds).forEach(id => { if (!cur.has(id)) n++; }); return n; }
+    const fmtPct = p => Math.round(Math.abs(p) * 100) + "%";
+    // arrow + signed % + color — color is NEVER the only signal (CVD-safe)
+    function deltaChip(p) {
+      if (p === null) return `<span class="up" style="font-weight:600">＋${D.t("rg_new")}</span>`;
+      if (!p) return `<span class="muted">—</span>`;
+      const up = p > 0;
+      return `<span class="${up ? "up" : "down"}" style="font-weight:600">${up ? "▲" : "▼"} ${fmtPct(p)}</span>`;
+    }
+
+    // customer master: distinct customers per governorate (State verbatim) — cached
+    let _regionCounts = null;
+    async function regionCustomerCounts() {
+      if (_regionCounts) return _regionCounts;
+      const rows = await D.sbGetAll("dashboard_customers?select=partner_id,governorate&order=partner_id.desc");
+      const NONE = D.t("gov_none"), m = {};
+      rows.forEach(c => { const g = (c.governorate && String(c.governorate).trim()) || NONE; (m[g] = m[g] || new Set()).add(c.partner_id); });
+      const out = {}; Object.keys(m).forEach(g => out[g] = m[g].size); _regionCounts = out; return out;
+    }
+
+    let ordStory = null; // { cityRows, byGov, masterCounts, prevFrom, prevTo, priorCovered }
+
+    async function onDate() {
+      const from = $("fFrom").value || monthStart, to = $("fTo").value || today;
+      await loadWindow(from, to); fillGovSelect(); render();
+    }
+
+    async function loadWindow(from, to) {
+      try {
+        loadedFrom = from; loadedTo = to; loadedBasis = basis;
+        if (basis === "inv") { ordStory = null; cityRows = await loadInvoices(from, to); }
+        else { ordStory = await loadOrdersStory(from, to); cityRows = ordStory.cityRows; }
+        D.setUpdated(new Date().toISOString());
+      } catch (e) { cityRows = []; ordStory = null; $("cityTable").innerHTML = `<div class="err">${D.t("error_load")}</div>`; }
+    }
+
+    // ORDERS basis: confirmed sale orders by order date, tax-inclusive. Loads the
+    // selected window PLUS the equal-length window right before it (for momentum),
+    // and the customer master (for coverage). Governorate = State verbatim, so the
+    // money still reconciles 1:1 with Odoo's Sales pivot grouped by State.
+    async function loadOrdersStory(from, to) {
+      const lenDays = Math.round((Date.parse(to + "T00:00:00Z") - Date.parse(from + "T00:00:00Z")) / 864e5) + 1;
+      const prevTo = D.addDays(from, -1), prevFrom = D.addDays(from, -lenDays);
+      const [rows, masterCounts] = await Promise.all([
+        D.loadOrders({ from: prevFrom, to, dateField: "date_order",
+          select: "order_id,partner_id,partner_name,salesperson,city,state,amount_total,date_order,dashboard_customers(governorate,city)" }),
+        regionCustomerCounts()
+      ]);
+      const NONE = D.t("gov_none");
+      const cityM = {}, prevCity = {}, byGov = {}; let minDay = "";
+      rows.filter(isConf).forEach(o => {
+        const day = D.bagDay(o.date_order); if (!day) return;
+        if (!minDay || day < minDay) minDay = day;
+        const inCur = day >= from && day <= to, inPrev = day >= prevFrom && day <= prevTo;
+        if (!inCur && !inPrev) return;
+        const mc = o.dashboard_customers || {};
+        const gov = (mc.governorate && String(mc.governorate).trim()) || NONE;
+        const city = (mc.city && String(mc.city).trim()) || ((o.city && o.city !== "—") ? String(o.city).trim() : NONE);
+        const key = gov + "||" + city, a = val(o);
+        const g = byGov[gov] || (byGov[gov] = { cur: 0, prev: 0, orders: 0, curPids: new Set(), prevPids: new Set(), prevCust: new Map() });
+        if (inCur) {
+          g.cur += a; g.orders++; if (o.partner_id != null) g.curPids.add(o.partner_id);
+          const cm = cityM[key] || (cityM[key] = { city, govKey: gov, govLabel: gov, orders: 0, value: 0, returns: 0, net: 0, prev: 0 });
+          cm.orders++; cm.value += a; cm.net += a;
+        } else {
+          g.prev += a;
+          if (o.partner_id != null) {
+            g.prevPids.add(o.partner_id);
+            // remember each prev-period customer so the "quiet" list can name them
+            const pc = g.prevCust.get(o.partner_id) || { name: o.partner_name || ("ID " + o.partner_id), rep: o.salesperson || "", lastDate: "", total: 0 };
+            pc.total += a;
+            if (day > pc.lastDate) { pc.lastDate = day; if (o.salesperson) pc.rep = o.salesperson; }
+            g.prevCust.set(o.partner_id, pc);
+          }
+          prevCity[key] = (prevCity[key] || 0) + a;
+        }
+      });
+      Object.keys(cityM).forEach(k => { cityM[k].prev = prevCity[k] || 0; });
+      return { cityRows: Object.values(cityM), byGov, masterCounts, prevFrom, prevTo,
+        priorCovered: isPriorCovered(minDay, prevFrom) };
+    }
+
+    // INVOICES basis: posted customer invoices + credit notes by invoice
+    // date. Per owner request, keep the two document types SEPARATE:
+    //   value   = Sales invoices only (positive INV/) — the primary figure
+    //   returns = Returns / credit notes (RINv/, negative) — its own column
+    //   net     = value + returns = what Odoo's combined screen shows
+    // Gov/city from the customer master.
+    async function loadInvoices(from, to) {
+      const [inv, custRows] = await Promise.all([
+        D.sbGetAll(`dashboard_invoices?select=invoice_id,partner_id,amount_total,name` +
+          `&state=eq.posted&or=(name.like.INV*,name.like.RINv*)&invoice_date=gte.${from}&invoice_date=lt.${D.nextDay(to)}&order=invoice_id.desc`),
+        D.sbGetAll("dashboard_customers?select=partner_id,governorate,city&order=partner_id.desc")
+      ]);
+      const cmap = new Map(); custRows.forEach(c => cmap.set(c.partner_id, c));
+      const NONE = D.t("gov_none");
+      const m = {};
+      inv.forEach(x => {
+        const c = cmap.get(x.partner_id) || {};
+        const gov = (c.governorate && String(c.governorate).trim()) || NONE;
+        const city = (c.city && String(c.city).trim()) || NONE;
+        const key = gov + "||" + city;
+        if (!m[key]) m[key] = { city, govKey: gov, govLabel: gov, orders: 0, value: 0, returns: 0, net: 0 };
+        const amt = Number(x.amount_total) || 0;
+        m[key].orders++;                          // document count (invoices + credit notes)
+        if (amt > 0) m[key].value += amt;         // sales invoices (positive)
+        else m[key].returns += amt;               // returns / credit notes (negative)
+        m[key].net += amt;                        // net = sales − returns (= Odoo)
+      });
+      return Object.values(m);
+    }
+
+    function fillGovSelect() {
+      // governorate options ordered by value (computed over ALL cities, unfiltered by search)
+      const g = {};
+      cityRows.forEach(r => { if (!g[r.govKey]) g[r.govKey] = { key: r.govKey, label: r.govLabel, value: 0 }; g[r.govKey].value += r.value; });
+      const list = Object.values(g).sort((a, b) => b.value - a.value);
+      const sel = $("govSel"); const cur = sel.value;
+      sel.innerHTML = `<option value="">${D.t("gov_all")}</option>` +
+        list.map(x => `<option value="${D.esc(x.key)}"${x.key === cur ? " selected" : ""}>${D.esc(x.label)}</option>`).join("");
+    }
+
+    // shared: filter cityRows and roll up governorates
+    function computeView() {
+      const selGov = $("govSel").value, q = $("q").value.trim().toLowerCase();
+      const cities = cityRows.filter(r =>
+        (!selGov || r.govKey === selGov) &&
+        (!q || r.city.toLowerCase().includes(q) || r.govLabel.toLowerCase().includes(q)));
+      const gmap = {};
+      cities.forEach(r => { const e = gmap[r.govKey] || (gmap[r.govKey] = { key: r.govKey, label: r.govLabel, orders: 0, value: 0, returns: 0, net: 0, cities: 0 });
+        e.orders += r.orders; e.value += r.value; e.returns += (r.returns || 0); e.net += (r.net != null ? r.net : r.value); e.cities++; });
+      const govs = Object.values(gmap).sort((a, b) => b.value - a.value);
+      const totalVal = govs.reduce((s, x) => s + x.value, 0) || 1;
+      return { selGov, cities, gmap, govs, totalVal };
+    }
+
+    // Odoo's "None" bucket (customers with an empty State field) — same row Odoo's
+    // pivot shows, same fix: fill the field.
+    function noneBanner(gmap, totalVal) {
+      const noc = gmap[D.t("gov_none")], banner = $("unmappedBanner");
+      if (noc && noc.value > 0) {
+        const pct = Math.round(noc.value / totalVal * 100);
+        banner.innerHTML = `<div class="err" style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:10px;padding:10px 14px;margin:0 2px 12px;font-size:13px">` +
+          `⚠️ <b>${D.t("gov_none")}:</b> ${D.fmtNum(noc.orders)} ${countLabel()} · ${D.fmtMoney(noc.value)} (${pct}%). ${D.t("gov_none_note")}</div>`;
+        banner.style.display = "";
+      } else { banner.style.display = "none"; banner.innerHTML = ""; }
+    }
+
+    function drawGovChart(govs, colors) {
+      if (chart) chart.destroy();
+      chart = new Chart($("govChart"), {
+        type: "bar",
+        data: { labels: govs.map(x => x.label), datasets: [{ label: D.t("kpi_value"),
+          data: govs.map(x => x.value), backgroundColor: colors, borderRadius: 6 }] },
+        options: { indexAxis: "y", maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: {
+            label: c => `${D.fmtMoneyFull(c.parsed.x)} · ${D.fmtNum(govs[c.dataIndex].orders)} ${countLabel()}` } } },
+          scales: { x: { beginAtZero: true, ticks: { callback: v => D.fmtMoney(v) } } } }
+      });
+    }
+
+    function govNameCell(key, label) {
+      return key === D.t("gov_none")
+        ? `<span title="${D.esc(D.t("gov_none_note"))}" style="color:#92400e;background:#fef3c7;padding:2px 8px;border-radius:999px">⚠️ ${D.esc(label)}</span>`
+        : D.esc(label);
+    }
+
+    function bindGovRows() {
+      [...document.querySelectorAll(".gov-row")].forEach(tr => tr.addEventListener("click", () => { $("govSel").value = tr.dataset.gov; render(); }));
+    }
+
+    function renderCityTable(cities, totalVal, showDelta) {
+      const covered = !!(ordStory && ordStory.priorCovered) && showDelta;
+      const cityList = [...cities].sort((a, b) => b.value - a.value).slice(0, 300);
+      const deltaTh = showDelta ? `<th>${D.t("rg_delta_hd")}</th>` : extraTh();
+      $("cityTable").innerHTML = cityList.length ? `
+        <table class="dt">
+          <thead><tr><th>${D.t("region")}</th><th>${D.t("col_gov")}</th><th>${countLabel()}</th><th>${amtHeader()}</th>${deltaTh}<th>${D.t("share")}</th></tr></thead>
+          <tbody>
+          ${cityList.map(r => `<tr>
+            <td class="strong">${D.esc(r.city)}</td>
+            <td class="muted">${r.govKey === D.t("gov_none")
+              ? `<span title="${D.esc(D.t("gov_none_note"))}" style="color:#92400e;background:#fef3c7;padding:2px 8px;border-radius:999px;font-size:11.5px">⚠️ ${D.esc(r.govLabel)}</span>`
+              : D.esc(r.govLabel)}</td>
+            <td>${D.fmtNum(r.orders)}</td>
+            <td class="amt">${D.fmtMoney(r.value)}</td>${showDelta ? `<td>${covered ? deltaChip(pctChange(r.value, r.prev || 0)) : `<span class="muted">—</span>`}</td>` : extraTd(r)}
+            <td class="muted">${Math.round(r.value / totalVal * 100)}%</td>
+          </tr>`).join("")}
+          </tbody>
+        </table>` : `<div class="empty">${D.t("no_data")}</div>`;
+    }
+
+    function render() { basis === "inv" ? renderInvoices() : renderOrders(); }
+
+    // INVOICES basis — unchanged from before (Sales / Returns / Net).
+    function renderInvoices() {
+      ["kpiRow", "moversPanel", "coveragePanel"].forEach(id => $(id).style.display = "none");
+      $("govChTitle").textContent = D.t("govs_title"); $("govTblTitle").textContent = D.t("govs_title");
+      const { cities, gmap, govs, totalVal } = computeView();
+      $("cnt").textContent = `${D.fmtNum(govs.length)} ${D.t("govs_title")} · ${D.fmtNum(cities.length)} ${D.t("cities_title")}`;
+      noneBanner(gmap, totalVal);
+      drawGovChart(govs, govs.map((_, i) => PALETTE[i % PALETTE.length]));
+      $("govTable").innerHTML = govs.length ? `
+        <table class="dt">
+          <thead><tr><th>${D.t("col_gov")}</th><th>${D.t("cities_count")}</th><th>${countLabel()}</th><th>${amtHeader()}</th>${extraTh()}<th>${D.t("share")}</th></tr></thead>
+          <tbody>
+          ${govs.map(x => `<tr class="gov-row" data-gov="${D.esc(x.key)}" style="cursor:pointer">
+            <td class="strong">${govNameCell(x.key, x.label)}</td>
+            <td>${D.fmtNum(x.cities)}</td><td>${D.fmtNum(x.orders)}</td>
+            <td class="amt">${D.fmtMoney(x.value)}</td>${extraTd(x)}
+            <td class="muted">${Math.round(x.value / totalVal * 100)}%</td>
+          </tr>`).join("")}
+          </tbody>
+        </table>` : `<div class="empty">${D.t("no_data")}</div>`;
+      bindGovRows();
+      renderCityTable(cities, totalVal, false);
+    }
+
+    // ORDERS basis — the story layout.
+    function renderOrders() {
+      ["kpiRow", "moversPanel", "coveragePanel"].forEach(id => $(id).style.display = "");
+      $("govChTitle").textContent = D.t("rg_money_title"); $("govTblTitle").textContent = D.t("govs_title");
+      const { selGov, cities, gmap, govs, totalVal } = computeView();
+      $("cnt").textContent = `${D.fmtNum(govs.length)} ${D.t("govs_title")} · ${D.fmtNum(cities.length)} ${D.t("cities_title")}`;
+      noneBanner(gmap, totalVal);
+      drawGovChart(govs, "#2563eb"); // single hue — magnitude
+
+      const NONE = D.t("gov_none");
+      const byGov = (ordStory && ordStory.byGov) || {};
+      const covered = !!(ordStory && ordStory.priorCovered);
+      const keys = (selGov ? [selGov] : Object.keys(byGov)).filter(k => k !== NONE);
+      const pctOf = key => { const g = byGov[key]; return g ? pctChange(g.cur, g.prev) : 0; };
+
+      renderKpis(govs, cities.length, byGov, keys, covered);
+      renderMovers(keys, byGov, covered);
+      renderCoverage(keys, byGov);
+
+      const deltaCol = covered ? (x => deltaChip(pctOf(x.key))) : (() => `<span class="muted">—</span>`);
+      $("govTable").innerHTML = govs.length ? `
+        <table class="dt">
+          <thead><tr><th>${D.t("col_gov")}</th><th>${D.t("cities_count")}</th><th>${countLabel()}</th><th>${D.t("col_amount")}</th><th>${D.t("rg_delta_hd")}</th><th>${D.t("share")}</th></tr></thead>
+          <tbody>
+          ${govs.map(x => `<tr class="gov-row" data-gov="${D.esc(x.key)}" style="cursor:pointer">
+            <td class="strong">${govNameCell(x.key, x.label)}</td>
+            <td>${D.fmtNum(x.cities)}</td><td>${D.fmtNum(x.orders)}</td>
+            <td class="amt">${D.fmtMoney(x.value)}</td><td>${deltaCol(x)}</td>
+            <td class="muted">${Math.round(x.value / totalVal * 100)}%</td>
+          </tr>`).join("")}
+          </tbody>
+        </table>` : `<div class="empty">${D.t("no_data")}</div>`;
+      bindGovRows();
+      renderCityTable(cities, totalVal, true);
+    }
+
+    function renderKpis(govs, cityCount, byGov, keys, covered) {
+      const total = govs.reduce((s, x) => s + x.value, 0);
+      let sumCur = 0, sumPrev = 0, rising = null, falling = null;
+      keys.forEach(k => { const g = byGov[k]; if (!g) return; sumCur += g.cur; sumPrev += g.prev;
+        const p = pctChange(g.cur, g.prev);
+        if (p != null && isFinite(p)) { if (!rising || p > rising.p) rising = { k, p }; if (!falling || p < falling.p) falling = { k, p }; } });
+      const totalPct = pctChange(sumCur, sumPrev);
+      const tile = (cls, l, n, sub) => `<div class="kpi ${cls}"><div class="kpi-l">${l}</div><div class="kpi-n">${n}</div><div class="kpi-sub">${sub || "&nbsp;"}</div></div>`;
+      $("kpiRow").innerHTML =
+        tile("k-vio", D.t("rg_total_sales"), D.fmtMoney(total), covered ? `${deltaChip(totalPct)} ${D.t("rg_vs_prev")}` : "&nbsp;") +
+        tile("", D.t("rg_active_regions"), D.fmtNum(govs.length), `${D.fmtNum(cityCount)} ${D.t("rg_active_cities")}`) +
+        tile("k-grn", D.t("rg_rising"), covered && rising ? deltaChip(rising.p) : `<span class="muted">—</span>`, covered && rising ? D.esc(rising.k) : "&nbsp;") +
+        tile("k-red", D.t("rg_falling"), covered && falling ? deltaChip(falling.p) : `<span class="muted">—</span>`, covered && falling ? D.esc(falling.k) : "&nbsp;");
+    }
+
+    // "Who's moving" — diverging bars, growth right (green) / decline left (red);
+    // forced LTR so the geometry is unambiguous on an RTL page. Arrow+% always shown.
+    function renderMovers(keys, byGov, covered) {
+      $("moversTitle").textContent = D.t("rg_movers_title");
+      $("moversSub").textContent = "· " + D.t("rg_movers_sub");
+      if (!covered) { $("moversBody").innerHTML = `<div class="empty">${D.t("rg_no_prev")}</div>`; return; }
+      const rows = keys.map(k => ({ label: k, p: (byGov[k] ? pctChange(byGov[k].cur, byGov[k].prev) : 0) }))
+        .filter(r => r.p != null && isFinite(r.p) && r.p !== 0)
+        .sort((a, b) => b.p - a.p);
+      if (!rows.length) { $("moversBody").innerHTML = `<div class="empty">${D.t("no_data")}</div>`; return; }
+      const maxAbs = Math.max(...rows.map(r => Math.abs(r.p)), 0.01);
+      $("moversBody").innerHTML = `<div style="direction:ltr">` + rows.map(r => {
+        const up = r.p > 0, w = Math.max(3, Math.abs(r.p) / maxAbs * 46);
+        const bar = up
+          ? `<div style="position:absolute;left:50%;width:${w}%;top:2px;bottom:2px;background:var(--grn);border-radius:0 4px 4px 0"></div>`
+          : `<div style="position:absolute;right:50%;width:${w}%;top:2px;bottom:2px;background:var(--red);border-radius:4px 0 0 4px"></div>`;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0">
+          <span style="flex:0 0 32%;text-align:start;font-size:13px" dir="rtl">${D.esc(r.label)}</span>
+          <span style="flex:1;position:relative;height:16px;background:var(--surface2);border-radius:4px">
+            <span style="position:absolute;left:50%;top:0;bottom:0;border-inline-start:1px solid var(--bdr)"></span>${bar}</span>
+          <span style="flex:0 0 66px;text-align:end">${deltaChip(r.p)}</span>
+        </div>`;
+      }).join("") + `</div>`;
+    }
+
+    // "Where to push" — coverage bar (buyers / total customers) + quiet count.
+    function renderCoverage(keys, byGov) {
+      $("coverageTitle").textContent = D.t("rg_push_title");
+      $("coverageSub").textContent = "· " + D.t("rg_push_sub");
+      const master = (ordStory && ordStory.masterCounts) || {};
+      const rows = keys.map(k => {
+        const g = byGov[k] || { curPids: new Set(), prevPids: new Set() };
+        const cov = coverage(g.curPids.size, master[k]);
+        return { label: k, active: cov.active, total: cov.total, gap: cov.gap, quiet: countQuiet([...g.prevPids], [...g.curPids]) };
+      }).filter(r => r.total > 0).sort((a, b) => b.gap - a.gap);
+      if (!rows.length) { $("coverageBody").innerHTML = `<div class="empty">${D.t("no_data")}</div>`; return; }
+      $("coverageBody").innerHTML = `<table class="dt"><tbody>` + rows.map(r => {
+        const pct = r.total ? Math.round(r.active / r.total * 100) : 0;
+        return `<tr>
+          <td class="strong" style="width:20%">${D.esc(r.label)}</td>
+          <td style="width:38%"><div style="background:var(--bdr);border-radius:6px;height:14px;overflow:hidden"><div style="width:${pct}%;height:100%;background:var(--acc)"></div></div></td>
+          <td class="muted" style="white-space:nowrap">${D.fmtNum(r.active)} ${D.t("rg_buyers_of")} ${D.fmtNum(r.total)}${r.gap > 0 ? ` · <b class="down">${D.fmtNum(r.gap)} ${D.t("rg_to_chase")}</b>` : ""}</td>
+          <td class="muted" style="white-space:nowrap">${r.quiet > 0 ? `<a class="quiet-link" data-gov="${D.esc(r.label)}" title="${D.esc(D.t("rg_quiet_title"))}" style="cursor:pointer;color:var(--acc);text-decoration:underline dotted">⏸ ${D.fmtNum(r.quiet)} ${D.t("rg_quiet")}</a>` : ""}</td>
+        </tr>`;
+      }).join("") + `</tbody></table>`;
+      [...$("coverageBody").querySelectorAll(".quiet-link")].forEach(el => el.addEventListener("click", () => openQuiet(el.dataset.gov)));
+    }
+
+    // drill-down: the customers who bought in the previous period but not this one,
+    // for one governorate — sorted by their previous-period value (biggest lost first).
+    function openQuiet(gov) {
+      const g = ordStory && ordStory.byGov && ordStory.byGov[gov];
+      if (!g || !g.prevCust) return;
+      const cur = g.curPids;
+      const list = [...g.prevCust.entries()].filter(([pid]) => !cur.has(pid)).map(([, v]) => v).sort((a, b) => b.total - a.total);
+      $("quietTitle").textContent = `${D.t("rg_quiet_title")} — ${gov} · ${D.fmtNum(list.length)}`;
+      $("quietSub").textContent = D.t("rg_quiet_modal_sub");
+      $("quietBody").innerHTML = list.length ? `
+        <table class="dt">
+          <thead><tr><th>${D.t("rg_col_customer")}</th><th>${D.t("rg_col_rep")}</th><th>${D.t("rg_col_lastorder")}</th><th>${D.t("col_amount")}</th></tr></thead>
+          <tbody>${list.map(v => `<tr>
+            <td class="strong">${D.esc(v.name)}</td>
+            <td class="muted">${D.esc(v.rep || "—")}</td>
+            <td class="muted">${D.esc(v.lastDate || "—")}</td>
+            <td class="amt">${D.fmtMoney(v.total)}</td>
+          </tr>`).join("")}</tbody>
+        </table>` : `<div class="empty">${D.t("no_data")}</div>`;
+      $("quietModal").classList.add("open");
+    }
+    function closeQuiet() { $("quietModal").classList.remove("open"); }
+
+    (async function init() { await loadWindow(monthStart, today); fillGovSelect(); render(); })();
+    setInterval(async () => { await loadWindow(loadedFrom || monthStart, loadedTo || today); fillGovSelect(); render(); }, D.cfg.POLL_MS * 5);
+  })();
+  </script>
+</body>
+</html>

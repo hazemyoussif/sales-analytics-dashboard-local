@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dabboos — Sign in</title>
+  <link rel="stylesheet" href="assets/css/style.css?v=82" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1729" />
+  <link rel="apple-touch-icon" href="assets/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔐</text></svg>" />
+  <style>
+    body.login-page {
+      min-height: 100vh; display: grid; place-items: center;
+      background: linear-gradient(110deg, var(--bg), var(--bg2));
+    }
+    .login-card {
+      width: min(400px, calc(100vw - 32px));
+      background: var(--surface); border-radius: 18px; box-shadow: var(--shadow-lg);
+      padding: 34px 30px 28px;
+    }
+    .login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+    .login-brand .hd-logo { width: 46px; height: 46px; font-size: 18px; }
+    .login-brand-t { font-size: 17px; font-weight: 700; }
+    .login-brand-s { font-size: 12px; color: var(--ink2); }
+    .login-card h1 { font-size: 18px; margin-bottom: 4px; }
+    .login-sub { font-size: 12.5px; color: var(--ink2); margin-bottom: 20px; }
+    .login-field { margin-bottom: 14px; }
+    .login-field span { display: block; font-size: 12.5px; font-weight: 600; color: var(--ink2); margin-bottom: 6px; }
+    .login-field input {
+      width: 100%; padding: 11px 13px; border: 1px solid var(--bdr); border-radius: 10px;
+      font: inherit; background: var(--surface2); outline: none; transition: .15s;
+    }
+    .login-field input:focus { border-color: var(--acc); background: #fff; box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+    .login-btn {
+      width: 100%; padding: 12px; margin-top: 6px; border: none; border-radius: 10px;
+      background: linear-gradient(135deg, var(--acc), var(--acc2)); color: #fff;
+      font: inherit; font-weight: 700; font-size: 14.5px; cursor: pointer; transition: .15s;
+    }
+    .login-btn:hover { filter: brightness(1.08); }
+    .login-btn:disabled { opacity: .6; cursor: wait; }
+    .login-err {
+      display: none; margin-bottom: 14px; padding: 10px 13px; border-radius: 10px;
+      background: var(--red-bg); border: 1px solid var(--red-bdr); color: var(--red);
+      font-size: 12.5px; font-weight: 600;
+    }
+    .login-lang { margin-top: 18px; text-align: center; }
+    .login-lang button {
+      background: none; border: none; color: var(--acc); font: inherit; font-weight: 700;
+      cursor: pointer; font-size: 13px;
+    }
+  </style>
+</head>
+<body class="login-page">
+  <form class="login-card" id="loginForm" autocomplete="on">
+    <div class="login-brand">
+      <div class="hd-logo">DB</div>
+      <div>
+        <div class="login-brand-t" id="brandT"></div>
+        <div class="login-brand-s" id="brandS"></div>
+      </div>
+    </div>
+    <h1 id="title"></h1>
+    <p class="login-sub" id="sub"></p>
+    <div class="login-err" id="err"></div>
+    <label class="login-field">
+      <span id="userLbl"></span>
+      <input id="user" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required />
+    </label>
+    <label class="login-field">
+      <span id="passLbl"></span>
+      <input id="pass" type="password" autocomplete="current-password" required />
+    </label>
+    <button class="login-btn" id="btn" type="submit"></button>
+    <div class="login-lang"><button type="button" id="langBtn"></button></div>
+  </form>
+
+  <script src="assets/js/config.js?v=82"></script>
+  <script src="assets/js/auth.js?v=82"></script>
+  <script src="assets/js/common.js?v=82"></script>
+  <script>
+  (function () {
+    const D = window.DASH, A = window.DASH_AUTH;
+    document.documentElement.lang = D.isAR() ? "ar" : "en";
+    document.documentElement.dir = D.isAR() ? "rtl" : "ltr";
+    document.getElementById("brandT").textContent = D.t("brand");
+    document.getElementById("brandS").textContent = D.t("sub");
+    document.getElementById("title").textContent = D.t("login_title");
+    document.getElementById("sub").textContent = D.t("login_sub");
+    document.getElementById("userLbl").textContent = D.t("login_user");
+    document.getElementById("passLbl").textContent = D.t("login_pass");
+    document.getElementById("btn").textContent = D.t("login_btn");
+    document.getElementById("langBtn").textContent = D.isAR() ? "English" : "العربية";
+    document.getElementById("langBtn").addEventListener("click", () => {
+      localStorage.setItem("dash_lang", D.isAR() ? "en" : "ar");
+      location.reload();
+    });
+
+    const err = document.getElementById("err");
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("btn");
+      err.style.display = "none";
+      btn.disabled = true;
+      btn.textContent = D.t("login_wait");
+      try {
+        const p = await A.signIn(
+          document.getElementById("user").value,
+          document.getElementById("pass").value);
+        location.replace(A.firstAllowed(p) || "/alerts");
+      } catch (ex) {
+        const key = ex.code === "inactive" ? "login_inactive"
+                  : ex.code === "noprofile" ? "login_noprofile" : "login_err";
+        err.textContent = D.t(key);
+        err.style.display = "block";
+        btn.disabled = false;
+        btn.textContent = D.t("login_btn");
+      }
+    });
+  })();
+  </script>
+</body>
+</html>

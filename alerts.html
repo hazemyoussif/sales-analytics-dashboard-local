@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dabboos — Alert Center</title>
+  <link rel="stylesheet" href="assets/css/style.css?v=82" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1729" />
+  <link rel="apple-touch-icon" href="assets/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚨</text></svg>" />
+</head>
+<body>
+  <header id="appHeader" class="app"></header>
+  <main class="wrap">
+    <div class="page-head">
+      <h1 id="pgTitle"></h1>
+      <p id="pgSub"></p>
+    </div>
+
+    <div id="kpis" class="kpi-grid" data-src="dashboard_orders"></div>
+
+    <div class="filters" id="sevFilters"></div>
+    <div class="filters" id="statFilters"></div>
+    <div class="filters" id="fbHost"></div>
+
+    <div class="split-notes">
+      <div class="panel" data-src="dashboard_orders">
+        <div class="panel-head"><h2 id="listTitle"></h2></div>
+        <div class="panel-body cap" style="padding:0"><div id="alertTable"></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><h2 id="notesTitle"></h2></div>
+        <div class="panel-body cap" style="padding:0"><div id="notesFeed"></div></div>
+      </div>
+    </div>
+
+    <div class="foot">Dabboos Sales Command Center · n8n + Odoo</div>
+  </main>
+
+  <script src="assets/js/config.js?v=82"></script>
+  <script src="assets/js/auth.js?v=82"></script>
+  <script src="assets/js/common.js?v=82"></script>
+  <script src="assets/js/order-modal.js?v=82"></script>
+  <script>
+  (function () {
+    const D = window.DASH;
+    D.buildChrome("alerts");
+    document.getElementById("pgTitle").textContent = D.t("alerts_title");
+    document.getElementById("pgSub").textContent = D.t("alerts_sub");
+    document.getElementById("listTitle").textContent = D.t("alerts_title");
+    document.getElementById("notesTitle").textContent = D.t("ack_notes");
+
+    let all = [], ackMap = {}, acksAll = [];
+    let masterReps = [];
+    let sev = "all", stat = "all";
+    const seen = new Set(JSON.parse(localStorage.getItem("seen_alerts") || "[]"));
+    let firstLoad = true;
+
+    const kpi = (cls, label, num, sub) =>
+      `<div class="kpi ${cls}"><div class="kpi-l">${label}</div><div class="kpi-n">${num}</div><div class="kpi-sub">${sub || "&nbsp;"}</div></div>`;
+
+    // severity pills (all / critical / warning)
+    document.getElementById("sevFilters").innerHTML = `
+      <span class="pill active" data-f="all">${D.t("filter_all")}</span>
+      <span class="pill" data-f="critical">${D.t("filter_critical")}</span>
+      <span class="pill" data-f="warning">${D.t("filter_warning")}</span>`;
+    document.querySelectorAll("#sevFilters .pill").forEach(p => p.addEventListener("click", () => {
+      sev = p.getAttribute("data-f");
+      document.querySelectorAll("#sevFilters .pill").forEach(x => x.classList.toggle("active", x === p));
+      render();
+    }));
+    // status pills (all / reviewed / pending)
+    document.getElementById("statFilters").innerHTML = `
+      <span class="pill active" data-f="all">${D.t("filter_all")}</span>
+      <span class="pill" data-f="seen">${D.t("filter_seen")}</span>
+      <span class="pill" data-f="ignored">${D.t("filter_ignored")}</span>`;
+    document.querySelectorAll("#statFilters .pill").forEach(p => p.addEventListener("click", () => {
+      stat = p.getAttribute("data-f");
+      document.querySelectorAll("#statFilters .pill").forEach(x => x.classList.toggle("active", x === p));
+      render();
+    }));
+    const fb = D.filterBar(document.getElementById("fbHost"), { date: true, rep: true, customer: true }, render);
+
+    function render() {
+      // base respects the filter bar (date/rep/customer) + severity pill → KPIs & notes follow this
+      const v = fb.values();
+      const uid = v.rep ? (() => {
+        const hit = masterReps.find(m => m.name === v.rep) || all.find(r => r.salesperson === v.rep && r.user_id != null);
+        return hit ? (hit.user_id != null ? hit.user_id : null) : null;
+      })() : null;
+      const base = all.filter(r =>
+        (sev === "all" || r.level === sev) &&
+        (!v.rep || r.salesperson === v.rep || (uid != null && r.user_id === uid)) &&
+        fb.match(r, { date: "date_order", cust: "partner_name" }));
+
+      // KPIs
+      const total = base.length;
+      const crit = base.filter(r => r.level === "critical").length;
+      const warn = total - crit;
+      const reviewed = base.filter(r => ackMap[r.order_id]).length;
+      const pending = total - reviewed;
+      const rate = total ? Math.round(reviewed / total * 100) : 0;
+      document.getElementById("kpis").innerHTML =
+        kpi("", D.t("ack_total"), D.fmtNum(total), "&nbsp;") +
+        kpi("k-red", D.t("filter_critical"), D.fmtNum(crit), "&nbsp;") +
+        kpi("k-amb", D.t("filter_warning"), D.fmtNum(warn), "&nbsp;") +
+        kpi("k-grn", D.t("ack_seen"), D.fmtNum(reviewed), `${D.t("ack_rate")}: <b>${rate}%</b>`) +
+        kpi("k-vio", D.t("ack_ignored"), D.fmtNum(pending), "&nbsp;");
+
+      // table additionally applies the status pill
+      const rows = base.filter(r => {
+        const isSeen = !!ackMap[r.order_id];
+        if (stat !== "all" && (stat === "seen" ? !isSeen : isSeen)) return false;
+        return true;
+      });
+      fb.setCount(rows.length);
+      document.getElementById("alertTable").innerHTML = rows.length ? `
+        <table class="dt">
+          <thead><tr>
+            <th>${D.t("col_order")}</th><th>${D.t("col_customer")}</th>
+            <th>${D.t("col_rep")}</th><th>${D.t("col_city")}</th>
+            <th>${D.t("col_amount")}</th><th>${D.t("col_reasons")}</th>
+            <th>${D.t("ack_status")}</th>
+          </tr></thead>
+          <tbody>
+          ${rows.map(r => {
+            const acks = ackMap[r.order_id] || [];
+            const isSeen = acks.length > 0;
+            const last = isSeen ? acks[0].created_at : null;
+            return `<tr>
+              <td><a class="order-link" data-order-id="${D.esc(r.order_id)}">${D.esc(r.order_name || ("#" + r.order_id))}</a>
+                  <div>${r.level === "critical" ? `<span class="badge b-crit">${D.t("critical")}</span>` : `<span class="badge b-warn">${D.t("warning")}</span>`}</div></td>
+              <td>${D.esc(r.partner_name)}</td>
+              <td>${D.esc(r.salesperson)}</td>
+              <td class="muted">${D.esc(r.city)}</td>
+              <td class="amt">${D.fmtMoney(r.amount_total)}</td>
+              <td><div class="reasons">${(r.reasons || []).map(x => `<span class="r-${D.esc(x.severity)}">${x.severity === "critical" ? "🔴" : "🟡"} ${D.esc(D.isAR() ? x.ar : x.en)}</span>`).join("")}</div></td>
+              <td>${isSeen
+                ? `<span class="badge b-ok">${D.t("st_seen")}</span><div class="muted" style="margin-top:4px;font-size:12px">${D.t("ack_reviews")}: ${D.fmtNum(acks.length)} · ${D.fmtDate(last)} ${D.fmtTime(last)}</div>`
+                : `<span class="badge b-warn">${D.t("st_ignored")}</span>`}</td>
+            </tr>`;
+          }).join("")}
+          </tbody>
+        </table>` : `<div class="empty">${D.t("no_alerts")}</div>`;
+
+      renderNotes(base);
+    }
+
+    function renderNotes(base) {
+      const allowed = new Set(base.map(a => a.order_id));
+      const notes = acksAll.filter(a => a.note && a.note.trim() && allowed.has(a.order_id));
+      document.getElementById("notesFeed").innerHTML = notes.length ? `
+        <div class="notes-list">
+        ${notes.slice(0, 50).map(a => `
+          <div class="note-item">
+            <div class="note-head">
+              <a class="order-link" data-order-id="${D.esc(a.order_id)}">${D.esc(a.order_name || ("#" + a.order_id))}</a>
+              <span class="muted">${D.fmtDate(a.created_at)} · ${D.fmtTime(a.created_at)}</span>
+            </div>
+            <div class="note-body">${D.esc(a.note)}</div>
+          </div>`).join("")}
+        </div>` : `<div class="empty">${D.t("no_notes")}</div>`;
+    }
+
+    async function tick() {
+      try {
+        const [a, ak, mr] = await Promise.all([D.api("alerts"), D.api("acks"), D.loadSalespeopleMaster()]);
+        masterReps = mr || [];
+        D.setUpdated(a.generated_at);
+        all = a.alerts || [];
+        acksAll = ak.acks || [];
+        ackMap = {};
+        acksAll.forEach(r => { (ackMap[r.order_id] = ackMap[r.order_id] || []).push(r); });
+        fb.setReps([...masterReps.map(r => r.name), ...all.map(r => r.salesperson)]);
+        render();
+        const fresh = a.alerts.filter(r => !seen.has(r.order_id) && (r.level === "critical" || (D.cfg.SOUND_ON_WARNING && r.level === "warning")));
+        a.alerts.forEach(r => seen.add(r.order_id));
+        localStorage.setItem("seen_alerts", JSON.stringify([...seen].slice(-500)));
+        if (!firstLoad && fresh.length) {
+          D.beep();
+          const f = fresh[0];
+          D.toast(`<b>🚨 ${D.t("critical")} — ${D.esc(f.order_name || ("#" + f.order_id))}</b>${D.esc(f.partner_name)} · ${D.fmtMoney(f.amount_total)}`, "critical");
+          D.notify(D.t("alerts_title"), `${f.order_name || f.order_id} · ${f.partner_name}`);
+        }
+        firstLoad = false;
+      } catch (e) {
+        document.getElementById("alertTable").innerHTML = `<div class="err">${D.t("error_load")}</div>`;
+      }
+    }
+    tick();
+    setInterval(tick, D.cfg.POLL_MS);
+  })();
+  </script>
+</body>
+</html>

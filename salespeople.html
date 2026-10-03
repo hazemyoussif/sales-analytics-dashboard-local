@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dabboos — Salespeople</title>
+  <link rel="stylesheet" href="assets/css/style.css?v=82" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1729" />
+  <link rel="apple-touch-icon" href="assets/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>" />
+</head>
+<body>
+  <header id="appHeader" class="app"></header>
+  <main class="wrap">
+    <div class="page-head">
+      <h1 id="pgTitle"></h1>
+      <p id="pgSub"></p>
+    </div>
+
+    <div class="filters"><select id="basisSel" class="fb-sel"></select></div>
+    <div class="filters" id="fbHost"></div>
+
+    <div id="kpis" class="kpi-grid" data-src="dashboard_orders dashboard_invoices"></div>
+
+    <div class="panel" data-src="dashboard_orders dashboard_invoices">
+      <div class="panel-head"><h2 id="cmpTitle"></h2></div>
+      <div class="panel-body"><div class="chart-box tall"><canvas id="cmpChart"></canvas></div></div>
+    </div>
+
+    <div id="repCards" class="rep-grid" data-src="dashboard_orders dashboard_invoices"></div>
+    <div class="foot">Dabboos Sales Command Center · n8n + Odoo</div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="assets/js/config.js?v=82"></script>
+  <script src="assets/js/auth.js?v=82"></script>
+  <script src="assets/js/common.js?v=82"></script>
+  <script>
+  (function () {
+    const D = window.DASH;
+    D.buildChrome("sales");
+    document.getElementById("pgTitle").textContent = D.t("sales_title");
+
+    const isConf = o => o.state === "sale" || o.state === "done";
+    const val = o => Number(o.amount_total) || 0;
+    const num = n => Number(n) || 0;
+    const kpi = (cls, label, n, sub) => `<div class="kpi ${cls}"><div class="kpi-l">${label}</div><div class="kpi-n">${n}</div><div class="kpi-sub">${sub || "&nbsp;"}</div></div>`;
+
+    // basis toggle: Orders (what each rep sold) vs Invoices (what was billed
+    // under their name). Same week/month buckets, so each is comparable with
+    // its own Odoo screen. Persisted per browser.
+    let basis = localStorage.getItem("sales_basis") === "inv" ? "inv" : "ord";
+    const basisSel = document.getElementById("basisSel");
+    basisSel.innerHTML =
+      `<option value="ord"${basis === "ord" ? " selected" : ""}>${D.t("basis_orders")}</option>` +
+      `<option value="inv"${basis === "inv" ? " selected" : ""}>${D.t("basis_invoices")}</option>`;
+    const countLabel = () => basis === "inv" ? D.t("invoices_w") : D.t("orders");
+    const setSub = () => {
+      document.getElementById("pgSub").textContent = D.t("sales_sub") + " — 🔍 " + D.t(basis === "inv" ? "chk_inv_month" : "chk_orders");
+      document.getElementById("cmpTitle").textContent = D.t("sales_title") + " — " + D.t("wow") + " · " + D.t(basis === "inv" ? "basis_invoices" : "basis_orders");
+    };
+    setSub();
+
+    let cmpChart = null; const sparks = {};
+    let items = [], loadedFrom = null, loadedTo = null, loadedBasis = null;
+    let masterReps = [];
+    // name → user id across spellings (master first, then the loaded items)
+    const repUid = name => {
+      const hit = masterReps.find(r => r.name === name) ||
+        items.find(o => o.salesperson === name && o.user_id != null);
+      return hit ? (hit.user_id != null ? hit.user_id : null) : null;
+    };
+
+    // Baghdad calendar anchors
+    const bag = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Baghdad" }));
+    const pad = n => String(n).padStart(2, "0");
+    const ymd = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+    const today = ymd(bag);
+    const thisMonth = today.slice(0, 7);
+    const monthStart = thisMonth + "-01";
+    const lastMonth = ymd(new Date(bag.getFullYear(), bag.getMonth() - 1, 1)).slice(0, 7);
+    const lastMonthStart = lastMonth + "-01";
+    // week starts Saturday (Iraq)
+    const sod = new Date(bag); sod.setHours(0, 0, 0, 0);
+    const weekStart = new Date(sod); weekStart.setDate(sod.getDate() - ((bag.getDay() + 1) % 7));
+    const weeks = [];
+    for (let k = 11; k >= 0; k--) { const s = new Date(weekStart); s.setDate(weekStart.getDate() - k * 7); weeks.push({ s: ymd(s), label: k === 0 ? "W0" : "W-" + k }); }
+    const lastWeekStart = ymd(new Date(weekStart.getTime() - 7 * 864e5));
+    const weekStartStr = ymd(weekStart);
+    const seriesStart = weeks[0].s;
+
+    const fb = D.filterBar(document.getElementById("fbHost"), { date: true, rep: true, customer: true }, onFilterChange);
+    document.getElementById("fbFrom").value = monthStart;
+    document.getElementById("fbTo").value = today;
+
+    async function onFilterChange() {
+      const v = fb.values();
+      const from = v.from || monthStart, to = v.to || today;
+      // window must cover the filter range + 12-week series + last month
+      const wFrom = [from, seriesStart, lastMonthStart].sort()[0];
+      const wTo = to > today ? to : today;
+      if (wFrom !== loadedFrom || wTo !== loadedTo) await loadWindow(wFrom, wTo);
+      render();
+    }
+
+    async function loadWindow(from, to) {
+      try {
+        let mr;
+        if (basis === "inv") {
+          // posted INV documents by invoice date, per invoice salesperson
+          let inv; [inv, mr] = await Promise.all([
+            D.sbGetAll(`dashboard_invoices?select=invoice_id,salesperson,user_id,partner_name,amount_total,invoice_date` +
+              `&state=eq.posted&name=like.INV*&invoice_date=gte.${from}&invoice_date=lt.${D.nextDay(to)}&order=invoice_id.desc`),
+            D.loadSalespeopleMaster()
+          ]);
+          items = inv.map(x => ({ salesperson: x.salesperson || "—", user_id: x.user_id != null ? x.user_id : null,
+            partner_name: x.partner_name || "", date: String(x.invoice_date || "").slice(0, 10), value: num(x.amount_total) }));
+        } else {
+          // confirmed sale orders by order date
+          let rows; [rows, mr] = await Promise.all([
+            D.loadOrders({ from, to, dateField: "date_order",
+              select: "order_id,salesperson,user_id,partner_name,state,amount_total,create_date,date_order" }),
+            D.loadSalespeopleMaster()
+          ]);
+          items = rows.filter(isConf).map(o => ({ salesperson: o.salesperson || "—", user_id: o.user_id != null ? o.user_id : null,
+            partner_name: o.partner_name || "", date: String(o.date_order || o.create_date || "").slice(0, 10), value: val(o) }));
+        }
+        masterReps = mr; loadedFrom = from; loadedTo = to; loadedBasis = basis;
+        fb.setReps([...masterReps.map(r => r.name), ...items.map(o => o.salesperson)]);
+        D.setUpdated(new Date().toISOString());
+      } catch (e) { items = []; document.getElementById("repCards").innerHTML = `<div class="err">${D.t("error_load")}</div>`; }
+    }
+
+    function compute() {
+      const v = fb.values();
+      const from = v.from || monthStart, to = v.to || today;
+      const uid = v.rep ? repUid(v.rep) : null;
+      const list = items.filter(o =>
+        (!v.rep || o.salesperson === v.rep || (uid != null && o.user_id === uid)) &&
+        (!v.cust || String(o.partner_name || "").toLowerCase().includes(v.cust)));
+      const reps = {};
+      const key = o => String(o.user_id != null ? o.user_id : (o.salesperson || "—"));
+      list.forEach(o => {
+        const k = key(o); const d = o.date; const v2 = o.value;
+        const r = reps[k] || (reps[k] = { key: k, salesperson: o.salesperson || "—", user_id: o.user_id,
+          weekly: weeks.map(() => 0), thisWeek: 0, lastWeek: 0, thisMonth: 0, lastMonth: 0,
+          thisWeekN: 0, lastWeekN: 0, thisMonthN: 0, lastMonthN: 0, rangeOrders: 0, rangeValue: 0 });
+        for (let i = 0; i < weeks.length; i++) { const e = (i < weeks.length - 1) ? weeks[i + 1].s : ymd(new Date(weekStart.getTime() + 7 * 864e5)); if (d >= weeks[i].s && d < e) { r.weekly[i] += v2; break; } }
+        if (d >= weekStartStr) { r.thisWeek += v2; r.thisWeekN++; }
+        else if (d >= lastWeekStart && d < weekStartStr) { r.lastWeek += v2; r.lastWeekN++; }
+        if (d.slice(0, 7) === thisMonth) { r.thisMonth += v2; r.thisMonthN++; }
+        if (d.slice(0, 7) === lastMonth) { r.lastMonth += v2; r.lastMonthN++; }
+        if (d >= from && d <= to) { r.rangeOrders++; r.rangeValue += v2; }
+      });
+      return Object.values(reps).sort((a, b) => b.rangeValue - a.rangeValue);
+    }
+
+    const tag = pct => { const up = pct >= 0; return `<span class="yoy-tag ${up ? "yoy-up" : "yoy-down"}">${up ? "▲" : "▼"} ${Math.abs(pct)}%</span>`; };
+    const pctOf = (a, b) => b > 0 ? Math.round((a - b) / b * 100) : (a > 0 ? 100 : 0);
+
+    function render() {
+      const reps = compute();
+      const v = fb.values(); const from = v.from || monthStart, to = v.to || today;
+      fb.setCount(reps.length);
+
+      const rangeOrders = reps.reduce((s, r) => s + r.rangeOrders, 0);
+      const rangeValue = reps.reduce((s, r) => s + r.rangeValue, 0);
+      const top = reps[0];
+      document.getElementById("kpis").innerHTML =
+        kpi("k-vio", D.t("sp_reps"), D.fmtNum(reps.length), `${from} → ${to}`) +
+        kpi("k-grn", basis === "inv" ? D.t("invoices_w") : D.t("ov_confirmed"), D.fmtNum(rangeOrders), `${D.t("kpi_value")}: <b>${D.fmtMoney(rangeValue)}</b>`) +
+        kpi("", D.t("kpi_value"), D.fmtMoney(rangeValue), "&nbsp;") +
+        kpi("", D.t("col_rep"), top ? D.esc(top.salesperson) : "—", top ? D.fmtMoney(top.rangeValue) : "&nbsp;");
+
+      // this-week vs last-week comparison (top 12 by range)
+      const t12 = reps.slice(0, 12);
+      const ctx = document.getElementById("cmpChart");
+      if (cmpChart) cmpChart.destroy();
+      cmpChart = new Chart(ctx, {
+        type: "bar",
+        data: { labels: t12.map(r => r.salesperson), datasets: [
+          { label: D.t("sp_week"), data: t12.map(r => r.thisWeek), backgroundColor: "#2563eb", borderRadius: 5 },
+          { label: D.t("last_week"), data: t12.map(r => r.lastWeek), backgroundColor: "#cbd5e1", borderRadius: 5 }] },
+        options: { maintainAspectRatio: false,
+          plugins: { legend: { position: "top" }, tooltip: { callbacks: { label: c => c.dataset.label + ": " + D.fmtMoneyFull(c.parsed.y) } } },
+          scales: { y: { ticks: { callback: x => D.fmtMoney(x) } } } }
+      });
+
+      document.getElementById("repCards").innerHTML = reps.length ? reps.map((r, i) => `
+        <div class="rep-card">
+          <div class="rep-head">
+            <div class="rep-name">${D.esc(r.salesperson)}</div>
+            <div class="rep-tags">
+              <span class="tag-lbl">${D.t("wow")}</span>${tag(pctOf(r.thisWeek, r.lastWeek))}
+              <span class="tag-lbl">${D.t("mom")}</span>${tag(pctOf(r.thisMonth, r.lastMonth))}
+            </div>
+          </div>
+          <div class="rep-stats">
+            <div class="rep-stat"><div class="v">${D.fmtMoney(r.thisWeek)}</div><div class="l">${D.t("sp_week")} · ${D.fmtNum(r.thisWeekN)} ${countLabel()}</div></div>
+            <div class="rep-stat"><div class="v">${D.fmtMoney(r.lastWeek)}</div><div class="l">${D.t("last_week")} · ${D.fmtNum(r.lastWeekN)} ${countLabel()}</div></div>
+            <div class="rep-stat"><div class="v">${D.fmtMoney(r.thisMonth)}</div><div class="l">${D.t("sp_month")} · ${D.fmtNum(r.thisMonthN)} ${countLabel()}</div></div>
+            <div class="rep-stat"><div class="v">${D.fmtMoney(r.lastMonth)}</div><div class="l">${D.t("coll_last_month")} · ${D.fmtNum(r.lastMonthN)} ${countLabel()}</div></div>
+          </div>
+          <div class="spark"><canvas id="spark_${i}"></canvas></div>
+        </div>`).join("") : `<div class="empty">${D.t("no_data")}</div>`;
+
+      reps.slice(0, 60).forEach((r, i) => {
+        const el = document.getElementById("spark_" + i); if (!el) return;
+        if (sparks[i]) sparks[i].destroy();
+        sparks[i] = new Chart(el, {
+          type: "line",
+          data: { labels: weeks.map(w => w.label), datasets: [{ data: r.weekly, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,.12)", fill: true, tension: .35, pointRadius: 0, borderWidth: 2 }] },
+          options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => D.fmtMoney(c.parsed.y) } } }, scales: { x: { display: false }, y: { display: false } } }
+        });
+      });
+    }
+
+    basisSel.addEventListener("change", async () => {
+      basis = basisSel.value; localStorage.setItem("sales_basis", basis); setSub();
+      const wFrom = [monthStart, seriesStart, lastMonthStart].sort()[0];
+      await loadWindow(wFrom, today); render();
+    });
+
+    (async function init() { const wFrom = [monthStart, seriesStart, lastMonthStart].sort()[0]; await loadWindow(wFrom, today); render(); })();
+    setInterval(async () => { await loadWindow(loadedFrom || seriesStart, loadedTo || today); render(); }, D.cfg.POLL_MS * 5);
+  })();
+  </script>
+</body>
+</html>

@@ -1,37 +1,417 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>الإدارة — دبوس</title>
-<link rel="stylesheet" href="assets/css/style.css?v=36">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔐</text></svg>">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dabboos — Admin Panel</title>
+  <link rel="stylesheet" href="assets/css/style.css?v=82" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="theme-color" content="#0f1729" />
+  <link rel="apple-touch-icon" href="assets/icons/icon-180.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>" />
+  <style>
+    .u-table input[type="text"] { width: 130px; padding: 6px 8px; border: 1px solid var(--bdr); border-radius: 8px; font: inherit; font-size: 12.5px; }
+    .u-table select { padding: 6px 8px; border: 1px solid var(--bdr); border-radius: 8px; font: inherit; font-size: 12.5px; background: #fff; }
+    .pg-checks { display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: 420px; }
+    .pg-checks label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink2); white-space: nowrap; cursor: pointer; }
+    .scope-box summary { cursor: pointer; font-size: 12.5px; color: var(--acc); font-weight: 600; white-space: nowrap; }
+    .scope-list { display: flex; flex-wrap: wrap; gap: 4px 10px; max-width: 320px; max-height: 150px; overflow: auto; margin-top: 6px; padding: 7px 9px; border: 1px solid var(--bdr); border-radius: 8px; background: var(--surface2); }
+    .scope-list label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--ink2); white-space: nowrap; cursor: pointer; }
+    .save-btn { padding: 7px 14px; border: none; border-radius: 8px; background: var(--acc); color: #fff; font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+    .save-btn:hover { background: var(--acc2); }
+    .save-btn:disabled { opacity: .5; cursor: wait; }
+    .you-badge { display: inline-block; margin-inline-start: 6px; padding: 2px 7px; border-radius: 999px; background: var(--grn-bg); border: 1px solid var(--grn-bdr); color: var(--grn); font-size: 10.5px; font-weight: 700; }
+    .new-user { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+    .new-user label { display: block; }
+    .new-user label span { display: block; font-size: 12px; font-weight: 600; color: var(--ink2); margin-bottom: 5px; }
+    .new-user input, .new-user select { padding: 9px 11px; border: 1px solid var(--bdr); border-radius: 9px; font: inherit; font-size: 13px; background: var(--surface2); }
+    .new-user input:focus { border-color: var(--acc); background: #fff; outline: none; }
+    .pw-note { font-size: 11.5px; color: var(--ink3); margin-top: 10px; }
+  </style>
 </head>
 <body>
-  <div id="shell" class="hidden"></div>
-  <noscript><main><div class="state error">This dashboard needs JavaScript enabled.</div></main></noscript>
-  <main id="app" class="hidden">
-    <div id="boot" class="state">Loading…</div>
+  <header id="appHeader" class="app"></header>
+  <main class="wrap">
+    <div class="page-head">
+      <h1 id="pgTitle"></h1>
+      <p id="pgSub"></p>
+    </div>
 
-    <div id="tabs" class="filters"></div>
-    <div id="notice"></div>
-    <div id="panel"></div>
+    <!-- create user -->
+    <div class="panel" style="margin-bottom:18px">
+      <div class="panel-head"><h2 id="createTitle"></h2></div>
+      <div class="panel-body">
+        <form class="new-user" id="createForm">
+          <label><span id="nuUserLbl"></span><input id="nuUser" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" pattern="[a-zA-Z0-9._-]+" required /></label>
+          <label><span id="nuNameLbl"></span><input id="nuName" type="text" autocomplete="off" /></label>
+          <label><span id="nuPassLbl"></span><input id="nuPass" type="text" autocomplete="off" minlength="6" required /></label>
+          <label><span id="nuRoleLbl"></span><select id="nuRole"></select></label>
+          <label style="align-self:center"><span id="nuScopeLbl"></span><div id="nuScope"></div></label>
+          <button class="save-btn" id="nuBtn" type="submit" style="padding:10px 18px"></button>
+        </form>
+        <div class="pw-note" id="pwNote"></div>
+      </div>
+    </div>
+
+    <!-- users -->
+    <div class="panel" style="margin-bottom:18px">
+      <div class="panel-head"><h2 id="usersTitle"></h2></div>
+      <div class="panel-body" style="padding:0;overflow-x:auto"><div id="usersBox" class="u-table"></div></div>
+    </div>
+
+    <!-- data sources: show / hide + what each feeds -->
+    <div class="panel" style="margin-bottom:18px">
+      <div class="panel-head"><h2 id="srcTitle"></h2></div>
+      <div class="panel-body">
+        <p class="pw-note" id="srcSub" style="margin:0 0 12px"></p>
+        <div style="overflow-x:auto"><div id="srcBox" class="u-table"></div></div>
+      </div>
+    </div>
+
+    <!-- traffic -->
+    <div class="page-head" style="margin-top:26px"><h1 id="trTitle"></h1></div>
+    <div id="trKpis" class="kpi-grid"></div>
+    <div class="panel" style="margin-bottom:18px">
+      <div class="panel-head"><h2 id="trDayTitle"></h2></div>
+      <div class="panel-body"><div class="chart-box"><canvas id="trChart"></canvas></div></div>
+    </div>
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-head"><h2 id="trPageTitle"></h2></div>
+        <div class="panel-body" style="padding:0"><div id="trByPage"></div></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2 id="trUserTitle"></h2></div>
+        <div class="panel-body" style="padding:0"><div id="trByUser"></div></div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:18px">
+      <div class="panel-head"><h2 id="trRecentTitle"></h2></div>
+      <div class="panel-body cap" style="padding:0"><div id="trRecent"></div></div>
+    </div>
+
+    <div class="foot">Dabboos Sales Command Center · n8n + Odoo</div>
   </main>
 
-  <!-- Same last-resort visibility as every other page: a module that fails to
-       parse must not leave a blank background with no explanation. -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="assets/js/config.js?v=82"></script>
+  <script src="assets/js/auth.js?v=82"></script>
+  <script src="assets/js/common.js?v=82"></script>
   <script>
-    window.addEventListener('error', e => {
-      const app = document.getElementById('app');
-      if (!app) return;
-      app.classList.remove('hidden');
-      const boot = document.getElementById('boot');
-      const msg = (e.message || 'Script failed to load') +
-                  (e.filename ? ' — ' + e.filename.split('/').pop() : '');
-      if (boot) { boot.className = 'state error'; boot.textContent = msg; }
-    }, true);
+  (function () {
+    const D = window.DASH, A = window.DASH_AUTH;
+    D.buildChrome("admin");
+    const $ = id => document.getElementById(id);
+    $("pgTitle").textContent = D.t("admin_title");
+    $("pgSub").textContent = D.t("admin_sub");
+    $("createTitle").textContent = D.t("admin_create");
+    $("usersTitle").textContent = D.t("admin_users");
+    $("srcTitle").textContent = D.t("admin_sources");
+    $("srcSub").textContent = D.t("admin_sources_sub");
+    $("trTitle").textContent = D.t("admin_traffic");
+    $("trDayTitle").textContent = D.t("tr_per_day");
+    $("trPageTitle").textContent = D.t("tr_by_page");
+    $("trUserTitle").textContent = D.t("tr_by_user");
+    $("trRecentTitle").textContent = D.t("tr_recent");
+    $("nuUserLbl").textContent = D.t("login_user");
+    $("nuUser").placeholder = D.t("admin_username_ph");
+    $("nuNameLbl").textContent = D.t("admin_fullname");
+    $("nuPassLbl").textContent = D.t("admin_password");
+    $("nuRoleLbl").textContent = D.t("admin_role");
+    $("nuScopeLbl").textContent = D.t("admin_scope");
+    $("nuBtn").textContent = D.t("admin_create_btn");
+    $("pwNote").textContent = D.t("admin_pw_note");
+
+    const ROLES = ["alerts", "management", "admin"];
+    const roleLabel = r => D.t("role_" + r);
+    const PAGE_LABEL = {
+      overview: "nav_overview", regions: "nav_regions", sales: "nav_sales",
+      collections: "nav_collections", debt: "nav_debt", alerts: "nav_alerts",
+      admin: "nav_admin", login: "login_title"
+    };
+    const pageLabel = p => D.t(PAGE_LABEL[p] || p);
+    $("nuRole").innerHTML = ROLES.map(r => `<option value="${r}">${roleLabel(r)}</option>`).join("");
+
+    /* ---------------- users ---------------- */
+    const me = A.profile();
+    let users = [];
+    let REPS = [];   // salesperson master: [{ user_id, name }]
+
+    // "Attached salespersons" control: a collapsible checkbox list of reps.
+    // None checked = full access (scope_user_ids = null). The DB (RLS) enforces
+    // the restriction; this only records the admin's choice.
+    function scopeSummary(n) { return n ? (n + " " + D.t("admin_scope_reps")) : D.t("admin_scope_all"); }
+    function scopeChecksHtml(selected) {
+      const sel = new Set((selected || []).map(Number));
+      return `<details class="scope-box"><summary>${scopeSummary(sel.size)}</summary>
+        <div class="scope-list">
+          ${REPS.map(r => `<label><input type="checkbox" class="scope-rep" value="${D.esc(r.user_id)}"${sel.has(Number(r.user_id)) ? " checked" : ""}> ${D.esc(r.name)}</label>`).join("")
+            || `<span class="muted" style="font-size:12px">${D.t("admin_scope_none")}</span>`}
+        </div></details>`;
+    }
+    function readScope(container) {
+      const ids = [...container.querySelectorAll(".scope-rep:checked")].map(cb => Number(cb.value));
+      return ids.length ? ids : null;
+    }
+    function wireScope(box) {   // live-update the summary as boxes toggle
+      const det = box.querySelector(".scope-box"); if (!det) return;
+      det.addEventListener("change", () => {
+        det.querySelector("summary").textContent =
+          scopeSummary(det.querySelectorAll(".scope-rep:checked").length);
+      });
+    }
+    async function loadReps() {
+      try { REPS = await D.loadSalespeopleMaster() || []; } catch (e) { REPS = []; }
+      $("nuScope").innerHTML = scopeChecksHtml([]);
+      wireScope($("nuScope"));
+    }
+
+    function effPages(u) {
+      const out = {};
+      A.PAGE_ORDER.forEach(pid => {
+        const o = u.pages || {};
+        out[pid] = (typeof o[pid] === "boolean") ? o[pid] : !!(A.ROLE_DEFAULTS[u.role] && A.ROLE_DEFAULTS[u.role][pid]);
+      });
+      return out;
+    }
+
+    function renderUsers() {
+      $("usersBox").innerHTML = users.length ? `
+        <table class="dt">
+          <thead><tr>
+            <th>${D.t("admin_user_col")}</th><th>${D.t("admin_fullname")}</th>
+            <th>${D.t("admin_role")}</th><th>${D.t("admin_pages")}</th>
+            <th>${D.t("admin_scope")}</th>
+            <th>${D.t("admin_active")}</th>
+            <th>${D.t("admin_setpw")}</th><th></th>
+          </tr></thead>
+          <tbody>
+          ${users.map(u => {
+            const self = me && u.user_id === me.user_id;
+            const eff = effPages(u);
+            return `<tr data-uid="${D.esc(u.user_id)}">
+              <td><b>${D.esc(u.username)}</b>${self ? `<span class="you-badge">${D.t("admin_you")}</span>` : ""}</td>
+              <td><input type="text" class="u-name" value="${D.esc(u.full_name || "")}"></td>
+              <td><select class="u-role"${self ? " disabled" : ""}>
+                ${ROLES.map(r => `<option value="${r}"${u.role === r ? " selected" : ""}>${roleLabel(r)}</option>`).join("")}
+              </select></td>
+              <td><div class="pg-checks">
+                ${A.PAGE_ORDER.map(pid =>
+                  `<label><input type="checkbox" class="u-pg" data-pid="${pid}"${eff[pid] ? " checked" : ""}${self && pid === "admin" ? " disabled" : ""}> ${pageLabel(pid)}</label>`).join("")}
+              </div></td>
+              <td class="u-scope">${scopeChecksHtml(u.scope_user_ids)}</td>
+              <td style="text-align:center"><input type="checkbox" class="u-active"${u.is_active ? " checked" : ""}${self ? " disabled" : ""}></td>
+              <td><div style="display:flex;gap:5px;align-items:center">
+                <input type="text" class="u-pw" autocomplete="off" placeholder="${D.t("admin_pw_ph")}" style="width:120px">
+                <button class="save-btn u-setpw" type="button">${D.t("admin_pw_set")}</button>
+              </div></td>
+              <td><button class="save-btn u-save" type="button">${D.t("admin_save")}</button></td>
+            </tr>`;
+          }).join("")}
+          </tbody>
+        </table>` : `<div class="empty">${D.t("tr_empty")}</div>`;
+
+      document.querySelectorAll("#usersBox tr[data-uid]").forEach(tr => {
+        wireScope(tr.querySelector(".u-scope"));
+        // Set password: calls the admin-guarded RPC (SECURITY DEFINER) so the
+        // service_role key never touches the browser. Password is not trimmed
+        // (spaces may be intentional); only a minimum length is enforced here,
+        // and again in the DB function.
+        tr.querySelector(".u-setpw").addEventListener("click", async () => {
+          const inp = tr.querySelector(".u-pw"), b = tr.querySelector(".u-setpw");
+          const pw = inp.value;
+          if (!pw || pw.length < 6) { D.toast("<b>" + D.t("admin_pw_short") + "</b>", "critical"); return; }
+          b.disabled = true;
+          try {
+            await D.sbWrite("POST", "rpc/dash_set_password", {
+              target_id: tr.getAttribute("data-uid"), new_password: pw
+            });
+            inp.value = "";
+            D.toast("<b>" + D.t("admin_pw_done") + "</b>");
+          } catch (e) {
+            D.toast("<b>" + D.t("admin_err") + "</b>", "critical");
+          }
+          b.disabled = false;
+        });
+        // changing the role resets the page checkboxes to that role's defaults
+        tr.querySelector(".u-role").addEventListener("change", e => {
+          const d = A.ROLE_DEFAULTS[e.target.value] || {};
+          tr.querySelectorAll(".u-pg").forEach(cb => { cb.checked = !!d[cb.getAttribute("data-pid")]; });
+        });
+        tr.querySelector(".u-save").addEventListener("click", async () => {
+          const btn = tr.querySelector(".u-save");
+          btn.disabled = true;
+          try {
+            const pages = {};
+            tr.querySelectorAll(".u-pg").forEach(cb => { pages[cb.getAttribute("data-pid")] = cb.checked; });
+            await D.sbWrite("PATCH", "dash_users?user_id=eq." + encodeURIComponent(tr.getAttribute("data-uid")), {
+              full_name: tr.querySelector(".u-name").value.trim() || null,
+              role: tr.querySelector(".u-role").value,
+              pages: pages,
+              scope_user_ids: readScope(tr.querySelector(".u-scope")),
+              is_active: tr.querySelector(".u-active").checked,
+              updated_at: new Date().toISOString()
+            });
+            D.toast("<b>" + D.t("admin_saved") + "</b>");
+            await loadUsers();
+          } catch (e) {
+            D.toast("<b>" + D.t("admin_err") + "</b>", "critical");
+            btn.disabled = false;
+          }
+        });
+      });
+    }
+
+    async function loadUsers() {
+      users = await D.sbGetAll("dash_users?select=user_id,username,full_name,role,pages,is_active,scope_user_ids&order=created_at.asc");
+      renderUsers();
+    }
+
+    /* ---------------- create user ---------------- */
+    $("createForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const btn = $("nuBtn");
+      btn.disabled = true;
+      try {
+        const username = $("nuUser").value.trim().toLowerCase();
+        const role = $("nuRole").value;
+        const uid = await A.signUp(username, $("nuPass").value, $("nuName").value.trim(), role);
+        // the DB trigger creates the profile INACTIVE — activate it now
+        const q = uid ? "user_id=eq." + encodeURIComponent(uid) : "username=eq." + encodeURIComponent(username);
+        await D.sbWrite("PATCH", "dash_users?" + q, {
+          is_active: true, role: role,
+          scope_user_ids: readScope($("nuScope")),
+          updated_at: new Date().toISOString()
+        });
+        D.toast("<b>" + D.t("admin_created") + "</b>");
+        $("nuUser").value = ""; $("nuName").value = ""; $("nuPass").value = "";
+        $("nuScope").innerHTML = scopeChecksHtml([]); wireScope($("nuScope"));
+        await loadUsers();
+      } catch (ex) {
+        const dup = /already|registered|exists/i.test(String(ex.message));
+        D.toast("<b>" + D.t(dup ? "admin_user_exists" : "admin_err") + "</b>", "critical");
+      }
+      btn.disabled = false;
+    });
+
+    /* ---------------- data sources: show / hide ----------------
+       One toggle per raw table. Hidden set is GLOBAL (dash_settings,
+       admins write / everyone reads). Each row also documents what the
+       table feeds on the dashboard, so admins see the impact before
+       flipping it. Saving re-applies visibility to this page too. */
+    async function renderSources() {
+      const hidden = await D.loadHiddenSources(true);
+      $("srcBox").innerHTML = `
+        <table class="dt">
+          <thead><tr>
+            <th>${D.t("src_col_table")}</th>
+            <th>${D.t("src_col_feeds")}</th>
+            <th style="text-align:center">${D.t("src_col_visible")}</th>
+          </tr></thead>
+          <tbody>
+          ${D.DATA_SOURCES.map(s => `<tr data-table="${s.table}">
+            <td><b>${D.t(s.key)}</b><div class="muted" style="font-size:11px">${s.table}</div></td>
+            <td class="muted" style="font-size:12px">${s.feeds.map(f => D.esc(D.t(f))).join(" · ")}</td>
+            <td style="text-align:center"><input type="checkbox" class="src-vis"${hidden.has(s.table) ? "" : " checked"}></td>
+          </tr>`).join("")}
+          </tbody>
+        </table>
+        <div style="padding:12px 2px 2px;display:flex;gap:12px;align-items:center">
+          <button class="save-btn" id="srcSave" type="button">${D.t("admin_save")}</button>
+          <span class="pw-note" style="margin:0">${D.t("src_hidden_note")}</span>
+        </div>`;
+      $("srcSave").addEventListener("click", async () => {
+        const btn = $("srcSave");
+        btn.disabled = true;
+        try {
+          const off = [...document.querySelectorAll("#srcBox tr[data-table]")]
+            .filter(tr => !tr.querySelector(".src-vis").checked)
+            .map(tr => tr.getAttribute("data-table"));
+          await D.setHiddenSources(off);
+          D.applyDataSourceVisibility();
+          D.toast("<b>" + D.t("admin_saved") + "</b>");
+        } catch (e) {
+          D.toast("<b>" + D.t("admin_err") + "</b>", "critical");
+        }
+        btn.disabled = false;
+      });
+    }
+
+    /* ---------------- traffic ---------------- */
+    const BAGHDAD = { timeZone: "Asia/Baghdad" };
+    const dayKey = ts => new Date(ts).toLocaleDateString("en-CA", BAGHDAD); // YYYY-MM-DD
+    let trChart = null;
+
+    function countBy(rows, keyFn) {
+      const m = new Map();
+      rows.forEach(r => { const k = keyFn(r); m.set(k, (m.get(k) || 0) + 1); });
+      return [...m.entries()].sort((a, b) => b[1] - a[1]);
+    }
+    const miniTable = (pairs, head1) => pairs.length ? `
+      <table class="dt"><thead><tr><th>${head1}</th><th>${D.t("tr_views")}</th></tr></thead>
+      <tbody>${pairs.map(([k, n]) => `<tr><td>${D.esc(k)}</td><td class="amt">${D.fmtNum(n)}</td></tr>`).join("")}</tbody></table>`
+      : `<div class="empty">${D.t("tr_empty")}</div>`;
+
+    async function loadTraffic() {
+      const since = new Date(Date.now() - 30 * 864e5).toISOString();
+      const rows = await D.sbGetAll(
+        "page_views?select=page,username,viewed_at&viewed_at=gte." + since + "&order=viewed_at.desc");
+
+      const today = dayKey(Date.now());
+      const wk = new Date(Date.now() - 7 * 864e5).getTime();
+      const last7 = rows.filter(r => new Date(r.viewed_at).getTime() >= wk);
+      const kpi = (cls, label, num) =>
+        `<div class="kpi ${cls}"><div class="kpi-l">${label}</div><div class="kpi-n">${num}</div><div class="kpi-sub">&nbsp;</div></div>`;
+      $("trKpis").innerHTML =
+        kpi("", D.t("tr_views_today"), D.fmtNum(rows.filter(r => dayKey(r.viewed_at) === today).length)) +
+        kpi("k-grn", D.t("tr_views_7"), D.fmtNum(last7.length)) +
+        kpi("k-vio", D.t("tr_users_7"), D.fmtNum(new Set(last7.map(r => r.username)).size));
+
+      // views per day, zero-filled over the last 30 days
+      const perDay = new Map();
+      for (let i = 29; i >= 0; i--) perDay.set(dayKey(Date.now() - i * 864e5), 0);
+      rows.forEach(r => { const k = dayKey(r.viewed_at); if (perDay.has(k)) perDay.set(k, perDay.get(k) + 1); });
+      if (trChart) trChart.destroy();
+      trChart = new Chart($("trChart"), {
+        type: "bar",
+        data: {
+          labels: [...perDay.keys()].map(d => d.slice(5)),
+          datasets: [{ data: [...perDay.values()], backgroundColor: "#2563eb", borderRadius: 4 }]
+        },
+        options: {
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+      });
+
+      $("trByPage").innerHTML = miniTable(countBy(last7, r => pageLabel(r.page)), D.t("tr_page"));
+      $("trByUser").innerHTML = miniTable(countBy(last7, r => r.username || "—"), D.t("admin_user_col"));
+      $("trRecent").innerHTML = rows.length ? `
+        <table class="dt"><thead><tr>
+          <th>${D.t("admin_user_col")}</th><th>${D.t("tr_page")}</th><th>${D.t("tr_when")}</th>
+        </tr></thead><tbody>
+        ${rows.slice(0, 40).map(r => `<tr>
+          <td>${D.esc(r.username || "—")}</td>
+          <td>${D.esc(pageLabel(r.page))}</td>
+          <td class="muted">${D.fmtDate(r.viewed_at)} · ${D.fmtTime(r.viewed_at)}</td>
+        </tr>`).join("")}
+        </tbody></table>` : `<div class="empty">${D.t("tr_empty")}</div>`;
+      D.setUpdated(new Date().toISOString());
+    }
+
+    async function tick() {
+      try {
+        await loadReps();   // users table + create form need the rep list first
+        await Promise.all([loadUsers(), renderSources(), loadTraffic()]);
+      }
+      catch (e) { $("usersBox").innerHTML = `<div class="err">${D.t("error_load")}</div>`; }
+    }
+    tick();
+    setInterval(loadTraffic, D.cfg.POLL_MS);
+  })();
   </script>
-  <script type="module" src="assets/js/pages/admin.js?v=36"></script>
 </body>
 </html>

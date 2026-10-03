@@ -1,1 +1,15 @@
-{ "type": "module" }
+{
+  "name": "dabboos-sales-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dabboos Sales Command Center — analytics dashboard (Odoo → n8n → Supabase). A static front-end served by a small Node.js/Express server.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
